@@ -1,45 +1,32 @@
 /**
- * result.js - 出口／リザルト端末用ロジック（離脱検知対応版）
+ * result.js - 出口／リザルト端末
  */
 const ResultApp = {
   pollingTimer: null,
   currentGroupId: null,
-  isExMode: false,
+  isLowBattery: false,
   EX_SECRET_KEYWORD: 'フェニックス',
 
   async init() {
     const role = AppStorage.getRole();
-    if (role !== CONFIG.ROLES.EXIT) {
-      return;
-    }
+    if (role !== CONFIG.ROLES.EXIT) return;
 
     document.getElementById('result-screen').classList.remove('hidden');
-
-    // 離脱イベント登録
     this.setupExitListeners();
 
     try {
       await API.updateRoomStatus('exit', 'ready');
     } catch (e) {
-      console.warn('出口の初期接続通知失敗:', e);
+      console.warn('初期接続通知失敗:', e);
     }
 
     this.startPolling();
   },
 
-  /**
-   * ★画面離脱・タブ閉じ・スリープ時の検知リスナー
-   */
   setupExitListeners() {
     const notifyExit = () => {
-      const payload = JSON.stringify({
-        action: 'updateRoomStatus',
-        roomKey: 'exit',
-        status: 'unknown'
-      });
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(CONFIG.GAS_API_URL, payload);
-      }
+      const payload = JSON.stringify({ action: 'updateRoomStatus', roomKey: 'exit', status: 'unknown' });
+      if (navigator.sendBeacon) navigator.sendBeacon(CONFIG.GAS_API_URL, payload);
     };
 
     window.addEventListener('pagehide', notifyExit);
@@ -54,13 +41,18 @@ const ResultApp = {
     });
   },
 
+  async toggleBatteryAlert() {
+    this.isLowBattery = !this.isLowBattery;
+    const btn = document.getElementById('btn-battery-result');
+    btn.classList.toggle('active', this.isLowBattery);
+    btn.textContent = this.isLowBattery ? '🪫 充電低下 報告中' : '🔋 充電低下報告';
+    await API.reportLowBattery('exit', this.isLowBattery);
+  },
+
   startPolling() {
     this.checkStatus();
     if (this.pollingTimer) clearInterval(this.pollingTimer);
-
-    this.pollingTimer = setInterval(() => {
-      this.checkStatus();
-    }, CONFIG.POLLING_INTERVAL_MS);
+    this.pollingTimer = setInterval(() => this.checkStatus(), CONFIG.POLLING_INTERVAL_MS);
   },
 
   async checkStatus() {
@@ -72,11 +64,8 @@ const ResultApp = {
       if (!exitStatus) return;
 
       const newGroupId = exitStatus.groupId;
-      const isEx = exitStatus.isEx;
-
       if (newGroupId && newGroupId !== this.currentGroupId) {
         this.currentGroupId = newGroupId;
-        this.isExMode = isEx;
         await this.loadAndShowResult(newGroupId);
       } else if (!newGroupId && this.currentGroupId) {
         this.currentGroupId = null;
@@ -96,11 +85,9 @@ const ResultApp = {
       if (res && res.success) {
         this.renderResult(res.result);
       } else {
-        alert('成績データの取得に失敗しました: ' + (res.error || '不明なエラー'));
         this.showWaitingView();
       }
     } catch (e) {
-      alert('通信エラーが発生しました。');
       this.showWaitingView();
     }
   },
@@ -134,25 +121,17 @@ const ResultApp = {
       const isCorrect = q.info.isCorrect;
       card.className = `result-question-card ${isCorrect ? 'is-correct' : 'is-wrong'}`;
 
-      const diffLabel = {
-        easy: 'かんたん',
-        normal: 'ふつう',
-        hard: 'むずかしい',
-        ex: 'EX'
-      }[q.info.difficulty] || q.info.difficulty;
-
       card.innerHTML = `
         <div class="result-card-header">
-          <span class="result-q-title">第${q.num}問 (${diffLabel})</span>
+          <span class="result-q-title">第${q.num}問 (${q.info.difficulty.toUpperCase()})</span>
           <span class="result-judge-badge ${isCorrect ? 'badge-correct' : 'badge-wrong'}">
             ${isCorrect ? '⭕ 正解' : '❌ 不正解'}
           </span>
         </div>
         <div class="result-card-body">
-          <p class="result-q-text"><strong>問題:</strong> ${q.info.questionText || '（記録なし）'}</p>
-          <p class="result-q-answer"><strong>模範解答:</strong> <span class="text-highlight">${q.info.answer || '---'}</span></p>
-          ${q.info.explanation ? `<p class="result-q-exp"><strong>解説:</strong> ${q.info.explanation}</p>` : ''}
-          <div class="result-q-time">残り時間: <strong>${q.info.timeLeft || 0}秒</strong></div>
+          <p class="result-q-answer">解答: <span class="text-highlight">${q.info.answer || '--'}</span></p>
+          ${q.info.explanation ? `<p class="result-q-exp">${q.info.explanation}</p>` : ''}
+          <div class="result-q-time">残: ${q.info.timeLeft || 0}秒</div>
         </div>
       `;
       container.appendChild(card);
@@ -162,24 +141,18 @@ const ResultApp = {
   },
 
   async finishAndReady() {
-    if (!confirm('客の案内を完了し、待機状態にしますか？')) return;
-
     const btn = document.getElementById('btn-finish-result');
     btn.disabled = true;
-    btn.textContent = '更新中...';
 
     try {
       const res = await API.updateRoomStatus('exit', 'ready');
       if (res && res.success) {
         this.showWaitingView();
-      } else {
-        alert('待機状態への更新に失敗しました。');
       }
     } catch (e) {
-      alert('通信エラーが発生しました。');
+      alert('通信エラー');
     } finally {
       btn.disabled = false;
-      btn.textContent = '✅ 案内完了（待機状態にする）';
     }
   },
 
@@ -190,7 +163,6 @@ const ResultApp = {
   },
 
   showLoadingView(groupId) {
-    document.getElementById('loading-group-text').textContent = `グループ [ ${groupId} ] の成績を集計中...`;
     document.getElementById('result-view-waiting').classList.add('hidden');
     document.getElementById('result-view-loading').classList.remove('hidden');
     document.getElementById('result-view-content').classList.add('hidden');
