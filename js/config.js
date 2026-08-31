@@ -4,7 +4,7 @@
 const CONFIG = {
   // 1. Google Apps Script のデプロイURL
   // ※ステップ1でデプロイした「ウェブアプリのURL」をここに貼り付けてください
-  GAS_API_URL: 'https://script.google.com/macros/s/AKfycbzDkNWcd3gbEx4HBbDNwyWrIi8BIUTUOuBrmvOfYOvNpamyng1gbbfYnxJ8CZcAgt5m/exec',
+  GAS_API_URL: 'https://script.google.com/macros/s/AKfycbytbFBuutm6a4tyg9Ni3AOwzu7VhmesVtTHiv0B8EpGKT6U5RcqwVznUof6qJZzGa7a/exec',
 
   // 2. 端末の役割定義
   ROLES: {
