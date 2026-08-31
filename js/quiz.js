@@ -1,11 +1,11 @@
 /**
- * quiz.js - 第1問〜第3問 ブース機用ロジック（離脱検知対応版）
+ * quiz.js - 問題機（第1問〜第3問）
  */
 const QuizApp = {
   roomKey: null,
   roomNumber: 1,
   currentGroupId: null,
-  isExMode: false,
+  isLowBattery: false,
   pollingTimer: null,
 
   cachedQuestions: [],
@@ -18,20 +18,16 @@ const QuizApp = {
 
   async init() {
     const role = AppStorage.getRole();
-    if (!role || !['room1', 'room2', 'room3'].includes(role)) {
-      return;
-    }
+    if (!role || !['room1', 'room2', 'room3'].includes(role)) return;
 
     this.roomKey = role;
     this.roomNumber = CONFIG.ROOM_NUMBERS[role];
 
     document.getElementById('quiz-screen').classList.remove('hidden');
-    document.getElementById('quiz-room-badge').textContent = `${CONFIG.ROLE_NAMES[role]}`;
+    document.getElementById('quiz-room-badge').textContent = CONFIG.ROLE_NAMES[role];
 
-    // 離脱・バックグラウンド検知イベントの登録
     this.setupExitListeners();
 
-    // 接続通知
     try {
       await API.updateRoomStatus(this.roomKey, 'ready');
     } catch (e) {
@@ -42,35 +38,30 @@ const QuizApp = {
     this.startPolling();
   },
 
-  /**
-   * ★画面離脱・タブ閉じ・スリープ時の検知リスナー
-   */
   setupExitListeners() {
     const notifyExit = () => {
-      // 画面を離れる瞬間にunknownステータスを送信 (keepaliveで確実に届かせる)
-      const payload = JSON.stringify({
-        action: 'updateRoomStatus',
-        roomKey: this.roomKey,
-        status: 'unknown'
-      });
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(CONFIG.GAS_API_URL, payload);
-      }
+      const payload = JSON.stringify({ action: 'updateRoomStatus', roomKey: this.roomKey, status: 'unknown' });
+      if (navigator.sendBeacon) navigator.sendBeacon(CONFIG.GAS_API_URL, payload);
     };
 
-    // タブを閉じる・リロード・ページ移動時
     window.addEventListener('pagehide', notifyExit);
     window.addEventListener('beforeunload', notifyExit);
 
-    // iPadでホーム画面に戻ったり画面ロックされた時
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         notifyExit();
       } else if (document.visibilityState === 'visible') {
-        // 再び画面を開いたら ready を再通知
         API.updateRoomStatus(this.roomKey, this.currentGroupId ? 'playing' : 'ready');
       }
     });
+  },
+
+  async toggleBatteryAlert() {
+    this.isLowBattery = !this.isLowBattery;
+    const btn = document.getElementById('btn-battery-quiz');
+    btn.classList.toggle('active', this.isLowBattery);
+    btn.textContent = this.isLowBattery ? '🪫 充電低下 報告中' : '🔋 充電低下報告';
+    await API.reportLowBattery(this.roomKey, this.isLowBattery);
   },
 
   async preloadQuestions() {
@@ -88,10 +79,7 @@ const QuizApp = {
   startPolling() {
     this.checkStatus();
     if (this.pollingTimer) clearInterval(this.pollingTimer);
-
-    this.pollingTimer = setInterval(() => {
-      this.checkStatus();
-    }, CONFIG.POLLING_INTERVAL_MS);
+    this.pollingTimer = setInterval(() => this.checkStatus(), CONFIG.POLLING_INTERVAL_MS);
   },
 
   async checkStatus() {
@@ -103,12 +91,14 @@ const QuizApp = {
       if (!myStatus) return;
 
       const newGroupId = myStatus.groupId;
-      const isEx = myStatus.isEx;
+      const assignedDiff = myStatus.difficulty || 'normal';
+      const customTime = myStatus.timeLimit || 180;
 
+      // 新しいグループの到着検知
       if (newGroupId && newGroupId !== this.currentGroupId) {
         this.currentGroupId = newGroupId;
-        this.isExMode = isEx;
-        this.onNewGroupArrived();
+        this.currentDifficulty = assignedDiff;
+        this.onNewGroupArrived(customTime);
       } else if (!newGroupId && this.currentGroupId) {
         this.currentGroupId = null;
         this.showWaitingView();
@@ -118,65 +108,53 @@ const QuizApp = {
     }
   },
 
-  async onNewGroupArrived() {
+  async onNewGroupArrived(customTime) {
     document.getElementById('quiz-group-badge').textContent = `グループ: ${this.currentGroupId}`;
     const exBadge = document.getElementById('quiz-ex-badge');
-    if (this.isExMode) {
+    if (this.currentDifficulty === 'ex') {
       exBadge.classList.remove('hidden');
     } else {
       exBadge.classList.add('hidden');
     }
 
     await API.updateRoomStatus(this.roomKey, 'playing');
-
-    if (this.isExMode) {
-      this.startQuiz('ex');
-    } else {
-      this.showDifficultyView();
-    }
+    // 入口で指定された難易度・制限時間で即座に出題
+    this.startQuiz(this.currentDifficulty, customTime);
   },
 
   showWaitingView() {
     this.stopTimer();
     document.getElementById('quiz-view-waiting').classList.remove('hidden');
-    document.getElementById('quiz-view-difficulty').classList.add('hidden');
+    document.getElementById('quiz-view-move').classList.add('hidden');
     document.getElementById('quiz-view-play').classList.add('hidden');
   },
 
-  showDifficultyView() {
+  showMoveView() {
     this.stopTimer();
     document.getElementById('quiz-view-waiting').classList.add('hidden');
-    document.getElementById('quiz-view-difficulty').classList.remove('hidden');
+    document.getElementById('quiz-view-move').classList.remove('hidden');
     document.getElementById('quiz-view-play').classList.add('hidden');
   },
 
   showPlayView() {
     document.getElementById('quiz-view-waiting').classList.add('hidden');
-    document.getElementById('quiz-view-difficulty').classList.add('hidden');
+    document.getElementById('quiz-view-move').classList.add('hidden');
     document.getElementById('quiz-view-play').classList.remove('hidden');
   },
 
-  async chooseDifficulty(diff) {
-    this.startQuiz(diff);
-  },
-
-  async startQuiz(difficulty) {
-    this.currentDifficulty = difficulty;
+  async startQuiz(difficulty, customTime) {
     this.hintsRevealedCount = 0;
 
     let candidates = this.cachedQuestions.filter(q => q.difficulty === difficulty);
-    
     if (difficulty === 'ex' && candidates.length === 0) {
       try {
         const exRes = await API.getQuestions('ex', 'ex');
         candidates = exRes.questions;
-      } catch (e) {
-        console.error('EX問題の取得失敗:', e);
-      }
+      } catch (e) {}
     }
 
     if (candidates.length === 0) {
-      alert(`難易度 [${difficulty}] の問題が見つかりません。`);
+      alert(`問題が見つかりません [${difficulty}]`);
       return;
     }
 
@@ -184,7 +162,8 @@ const QuizApp = {
     this.renderQuestion();
     this.showPlayView();
 
-    this.timeLeft = CONFIG.TIME_LIMITS[difficulty] || 180;
+    // 入口指定の制限時間をセット
+    this.timeLeft = customTime || 180;
     this.startTimer();
   },
 
@@ -193,17 +172,32 @@ const QuizApp = {
     document.getElementById('quiz-q-id').textContent = this.currentQuestion.id;
     document.getElementById('quiz-question-text').textContent = this.currentQuestion.question_text;
 
-    const imgContainer = document.getElementById('quiz-image-container');
-    const imgElem = document.getElementById('quiz-image');
-    if (this.currentQuestion.image_url) {
-      imgElem.src = this.currentQuestion.image_url;
-      imgContainer.classList.remove('hidden');
+    // 画像・動画の表示処理
+    const mediaContainer = document.getElementById('quiz-media-container');
+    mediaContainer.innerHTML = '';
+    const mediaUrl = this.currentQuestion.media_url;
+
+    if (mediaUrl) {
+      mediaContainer.classList.remove('hidden');
+      if (mediaUrl.match(/\.(mp4|webm|mov)$/i)) {
+        const video = document.createElement('video');
+        video.src = mediaUrl;
+        video.controls = true;
+        video.autoplay = true;
+        video.className = 'quiz-media';
+        mediaContainer.appendChild(video);
+      } else {
+        const img = document.createElement('img');
+        img.src = mediaUrl;
+        img.className = 'quiz-media';
+        mediaContainer.appendChild(img);
+      }
     } else {
-      imgContainer.classList.add('hidden');
+      mediaContainer.classList.add('hidden');
     }
 
     const hintList = document.getElementById('hint-list');
-    hintList.innerHTML = '<div class="hint-empty">まだヒントは開示されていません</div>';
+    hintList.innerHTML = '<div class="hint-empty">--</div>';
     document.getElementById('btn-next-hint').disabled = false;
   },
 
@@ -211,15 +205,10 @@ const QuizApp = {
     if (!this.currentQuestion || !this.currentQuestion.hints) return;
 
     const totalHints = this.currentQuestion.hints.length;
-    if (this.hintsRevealedCount >= totalHints) {
-      alert('これ以上のヒントはありません。');
-      return;
-    }
+    if (this.hintsRevealedCount >= totalHints) return;
 
     const hintList = document.getElementById('hint-list');
-    if (this.hintsRevealedCount === 0) {
-      hintList.innerHTML = '';
-    }
+    if (this.hintsRevealedCount === 0) hintList.innerHTML = '';
 
     const nextHintText = this.currentQuestion.hints[this.hintsRevealedCount];
     this.hintsRevealedCount++;
@@ -242,9 +231,10 @@ const QuizApp = {
       this.timeLeft--;
       this.updateTimerDisplay();
 
+      // 時間切れ時の自動誤答・自動待機送信
       if (this.timeLeft <= 0) {
         this.stopTimer();
-        alert('⏰ 制限時間終了です！スタッフの指示に従ってください。');
+        this.autoSubmitOnTimeUp();
       }
     }, 1000);
   },
@@ -272,6 +262,21 @@ const QuizApp = {
     }
   },
 
+  async autoSubmitOnTimeUp() {
+    const payload = {
+      groupId: this.currentGroupId,
+      roomNumber: this.roomNumber,
+      difficulty: this.currentDifficulty,
+      questionId: this.currentQuestion ? this.currentQuestion.id : 'TIMEUP',
+      isCorrect: false,
+      timeLeft: 0
+    };
+    try {
+      await API.submitAnswer(payload);
+    } catch (e) {}
+    this.showMoveView();
+  },
+
   openJudgeModal(isCorrect) {
     this.pendingJudgeResult = isCorrect;
     const modal = document.getElementById('judge-modal');
@@ -279,9 +284,9 @@ const QuizApp = {
     const answer = document.getElementById('modal-correct-answer');
     const time = document.getElementById('modal-time-left');
 
-    title.textContent = isCorrect ? '⭕ 【正解】として記録しますか？' : '❌ 【不正解】として記録しますか？';
+    title.textContent = isCorrect ? '⭕ 正解' : '❌ 不正解';
     title.style.color = isCorrect ? '#22c55e' : '#ef4444';
-    answer.textContent = this.currentQuestion.answer || '（未設定）';
+    answer.textContent = this.currentQuestion.answer || '--';
     time.textContent = Math.max(0, this.timeLeft);
 
     modal.classList.remove('hidden');
@@ -299,7 +304,6 @@ const QuizApp = {
     const isCorrect = this.pendingJudgeResult;
     const submitBtn = document.getElementById('btn-confirm-judge');
     submitBtn.disabled = true;
-    submitBtn.textContent = '送信中...';
 
     const payload = {
       groupId: this.currentGroupId,
@@ -314,15 +318,12 @@ const QuizApp = {
       const res = await API.submitAnswer(payload);
       if (res && res.success) {
         this.closeJudgeModal();
-        this.showWaitingView();
-      } else {
-        alert('送信エラー: ' + (res.error || '不明なエラー'));
+        this.showMoveView(); // 先にお進みください画面を表示
       }
     } catch (e) {
-      alert('通信に失敗しました。もう一度送信してください。');
+      alert('送信失敗');
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = '確定して送信';
     }
   }
 };
