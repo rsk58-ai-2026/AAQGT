@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>文化祭アトラクション - 運営システム</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ========================================== -->
+  <!-- 0. 端末役割 選択画面 (初回アクセス / 設定リセット時) -->
+  <!-- ========================================== -->
+  <div id="role-select-screen" class="screen-container hidden">
+    <div class="card select-card">
+      <h1 class="title">端末役割の選択</h1>
+      <p class="subtitle">この端末で実行する役割を選択してください。</p>
+      <div class="role-button-group">
+        <button class="btn btn-role" onclick="AdminApp.selectRole('entry')">
+          <span class="role-icon">🎛️</span>
+          <div>
+            <span class="role-title">入口 / 運営管理機</span>
+            <span class="role-desc">全体の進行・ステータス監視・EX発動</span>
+          </div>
+        </button>
+        <button class="btn btn-role" onclick="AdminApp.selectRole('room1')">
+          <span class="role-icon">1️⃣</span>
+          <div>
+            <span class="role-title">第1問 ブース機</span>
+            <span class="role-desc">第1問の出題・タイマー・段階的ヒント</span>
+          </div>
+        </button>
+        <button class="btn btn-role" onclick="AdminApp.selectRole('room2')">
+          <span class="role-icon">2️⃣</span>
+          <div>
+            <span class="role-title">第2問 ブース機</span>
+            <span class="role-desc">第2問の出題・タイマー・段階的ヒント</span>
+          </div>
+        </button>
+        <button class="btn btn-role" onclick="AdminApp.selectRole('room3')">
+          <span class="role-icon">3️⃣</span>
+          <div>
+            <span class="role-title">第3問 ブース機</span>
+            <span class="role-desc">第3問の出題・タイマー・段階的ヒント</span>
+          </div>
+        </button>
+        <button class="btn btn-role" onclick="AdminApp.selectRole('exit')">
+          <span class="role-icon">🏁</span>
+          <div>
+            <span class="role-title">出口 / リザルト機</span>
+            <span class="role-desc">結果発表・解説・EX挑戦権判定</span>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 1. 入口 / 運営管理画面 (Admin)              -->
+  <!-- ========================================== -->
+  <div id="admin-screen" class="screen-container hidden">
+    <header class="app-header">
+      <div class="header-left">
+        <div class="status-indicator">
+          <span id="sync-dot" class="sync-dot"></span>
+          <span id="sync-text" class="sync-text">同期中...</span>
+        </div>
+        <span class="badge badge-admin">運営管理・入口機</span>
+      </div>
+      <button class="btn btn-outline-danger btn-sm" onclick="AdminApp.resetDeviceRole()">
+        ⚙️ 端末役割を再設定
+      </button>
+    </header>
+
+    <main class="admin-main">
+      <section class="section-card">
+        <h2 class="section-title">📍 全ブース リアルタイム進行状況</h2>
+        <div class="pipeline-grid">
+          <div id="card-room1" class="room-card status-unknown">
+            <div class="room-header">
+              <span class="room-name">第1問 ブース</span>
+              <span id="lamp-room1" class="status-lamp"></span>
+            </div>
+            <div class="room-body">
+              <div class="group-badge" id="group-room1">待機中</div>
+              <div class="status-label" id="status-label-room1">状態取得中...</div>
+            </div>
+          </div>
+          <div id="card-room2" class="room-card status-unknown">
+            <div class="room-header">
+              <span class="room-name">第2問 ブース</span>
+              <span id="lamp-room2" class="status-lamp"></span>
+            </div>
+            <div class="room-body">
+              <div class="group-badge" id="group-room2">待機中</div>
+              <div class="status-label" id="status-label-room2">状態取得中...</div>
+            </div>
+          </div>
+          <div id="card-room3" class="room-card status-unknown">
+            <div class="room-header">
+              <span class="room-name">第3問 ブース</span>
+              <span id="lamp-room3" class="status-lamp"></span>
+            </div>
+            <div class="room-body">
+              <div class="group-badge" id="group-room3">待機中</div>
+              <div class="status-label" id="status-label-room3">状態取得中...</div>
+            </div>
+          </div>
+          <div id="card-exit" class="room-card status-unknown">
+            <div class="room-header">
+              <span class="room-name">出口 / リザルト</span>
+              <span id="lamp-exit" class="status-lamp"></span>
+            </div>
+            <div class="room-body">
+              <div class="group-badge" id="group-exit">待機中</div>
+              <div class="status-label" id="status-label-exit">状態取得中...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-card control-card">
+        <h2 class="section-title">🚀 グループ進行コントロール</h2>
+        <div class="control-grid">
+          <div class="control-inputs">
+            <div class="form-group">
+              <label for="next-group-id" class="form-label">次に投入するグループID</label>
+              <div class="input-with-action">
+                <input type="text" id="next-group-id" class="form-input" placeholder="例: G-01" value="G-01">
+                <button class="btn btn-secondary" onclick="AdminApp.incrementGroupId()">+1</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="toggle-container">
+                <input type="checkbox" id="next-is-ex" class="toggle-checkbox">
+                <span class="toggle-switch"></span>
+                <span class="toggle-label">
+                  <strong class="ex-text">🔥 EXモードで突入</strong>
+                  <small>（出口で合言葉を伝えてきたリピート組）</small>
+                </span>
+              </label>
+            </div>
+          </div>
+          <div class="control-action">
+            <div id="advance-warning" class="advance-warning">⚠️ プレイ中のブースがあるため進行できません</div>
+            <button id="btn-advance" class="btn btn-advance" disabled onclick="AdminApp.triggerAdvance()">
+              <span class="btn-icon">➡️</span>
+              <span class="btn-text">全ブースを一斉進行（次へ）</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 2. 問題機ブース画面 (第1問〜第3問)           -->
+  <!-- ========================================== -->
+  <div id="quiz-screen" class="screen-container hidden">
+    <header class="quiz-header">
+      <div class="quiz-header-info">
+        <span id="quiz-room-badge" class="badge badge-quiz">第1問 ブース</span>
+        <span id="quiz-group-badge" class="group-pill">グループ: ---</span>
+        <span id="quiz-ex-badge" class="badge badge-ex hidden">🔥 EX MODE</span>
+      </div>
+      <button class="btn btn-outline-danger btn-sm" onclick="AdminApp.resetDeviceRole()">
+        ⚙️ 再設定
+      </button>
+    </header>
+
+    <!-- 待機画面 -->
+    <div id="quiz-view-waiting" class="quiz-view">
+      <div class="card waiting-card">
+        <div class="waiting-icon-pulse">⏳</div>
+        <h2 class="waiting-title">次のグループを待機中</h2>
+        <p class="waiting-subtitle">入口機からの「一斉進行」合図があるまで画面はこのままお待ちください。</p>
+        <div class="waiting-status-box">
+          <span>現在のブース状態：</span>
+          <strong class="status-ready-text">待機完了（準備OK）</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- 難易度選択画面 -->
+    <div id="quiz-view-difficulty" class="quiz-view hidden">
+      <h2 class="section-title text-center">挑戦する難易度を選んでください</h2>
+      <div class="difficulty-grid">
+        <button class="btn-diff btn-diff-easy" onclick="QuizApp.chooseDifficulty('easy')">
+          <span class="diff-title">かんたん</span>
+          <span class="diff-desc">ヒント多め・制限時間 2分</span>
+          <span class="diff-icon">🌱</span>
+        </button>
+        <button class="btn-diff btn-diff-normal" onclick="QuizApp.chooseDifficulty('normal')">
+          <span class="diff-title">ふつう</span>
+          <span class="diff-desc">標準レベル・制限時間 3分</span>
+          <span class="diff-icon">⚔️</span>
+        </button>
+        <button class="btn-diff btn-diff-hard" onclick="QuizApp.chooseDifficulty('hard')">
+          <span class="diff-title">むずかしい</span>
+          <span class="diff-desc">全問正解でEX挑戦権獲得・制限時間 4分</span>
+          <span class="diff-icon">👑</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 問題プレイ画面 -->
+    <div id="quiz-view-play" class="quiz-view hidden">
+      <div class="quiz-top-bar">
+        <div class="difficulty-tag" id="current-diff-tag">NORMAL</div>
+        <div class="timer-container" id="timer-box">
+          <span class="timer-icon">⏱️</span>
+          <span id="quiz-timer" class="timer-text">03:00</span>
+        </div>
+      </div>
+      <div class="card question-card">
+        <div class="question-header">
+          <span class="question-id-badge" id="quiz-q-id">Q1-01</span>
+        </div>
+        <p class="question-text" id="quiz-question-text">問題文を読み込み中...</p>
+        <div id="quiz-image-container" class="question-image-container hidden">
+          <img id="quiz-image" src="" alt="問題画像">
+        </div>
+      </div>
+      <div class="hint-section">
+        <div class="hint-header">
+          <h3 class="hint-heading">💡 ヒント</h3>
+          <button id="btn-next-hint" class="btn btn-secondary btn-sm" onclick="QuizApp.revealNextHint()">
+            次のヒントを表示（スタッフ操作）
+          </button>
+        </div>
+        <div id="hint-list" class="hint-list">
+          <div class="hint-empty">まだヒントは開示されていません</div>
+        </div>
+      </div>
+      <div class="staff-action-bar">
+        <button class="btn btn-danger btn-judge" onclick="QuizApp.openJudgeModal(false)">
+          ❌ 不正解 / ギブアップ
+        </button>
+        <button class="btn btn-success btn-judge" onclick="QuizApp.openJudgeModal(true)">
+          ⭕ 正解！
+        </button>
+      </div>
+    </div>
+
+    <!-- 判定確認モーダル -->
+    <div id="judge-modal" class="modal-overlay hidden">
+      <div class="card modal-card">
+        <h3 id="judge-modal-title" class="modal-title">正解として記録しますか？</h3>
+        <p class="modal-subtitle">模範解答：<strong id="modal-correct-answer">---</strong></p>
+        <p class="modal-info">残り時間: <span id="modal-time-left">--</span> 秒</p>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="QuizApp.closeJudgeModal()">戻る</button>
+          <button id="btn-confirm-judge" class="btn btn-primary" onclick="QuizApp.confirmAnswer()">確定して送信</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 3. 出口 / リザルト画面 (Exit / Result)      -->
+  <!-- ========================================== -->
+  <div id="result-screen" class="screen-container hidden">
+    <header class="result-header">
+      <div class="quiz-header-info">
+        <span class="badge badge-exit">出口 / リザルト機</span>
+        <span class="group-pill">グループ: <strong id="result-group-id">---</strong></span>
+      </div>
+      <button class="btn btn-outline-danger btn-sm" onclick="AdminApp.resetDeviceRole()">
+        ⚙️ 再設定
+      </button>
+    </header>
+
+    <!-- 待機画面 -->
+    <div id="result-view-waiting" class="quiz-view">
+      <div class="card waiting-card">
+        <div class="waiting-icon-pulse">🏁</div>
+        <h2 class="waiting-title">クリアグループの到着を待機中</h2>
+        <p class="waiting-subtitle">3問目を終えたグループが到着するまで画面はこのままお待ちください。</p>
+        <div class="waiting-status-box">
+          <span>現在の出口状態：</span>
+          <strong class="status-ready-text">待機完了（準備OK）</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- 読み込み中画面 -->
+    <div id="result-view-loading" class="quiz-view hidden">
+      <div class="card waiting-card">
+        <div class="waiting-icon-pulse">📊</div>
+        <h2 class="waiting-title" id="loading-group-text">成績データを集計中...</h2>
+      </div>
+    </div>
+
+    <!-- 成績発表コンテンツ -->
+    <div id="result-view-content" class="quiz-view hidden">
+      <!-- EX挑戦権 獲得バナー -->
+      <div id="result-ex-banner" class="banner-ex-qualified hidden">
+        <h2 class="ex-banner-title">🎉 EX問題 挑戦権 獲得！</h2>
+        <p class="ex-banner-desc">全問「むずかしい」を選択し、見事すべて正解しました！</p>
+        <div class="ex-secret-box">
+          <span class="secret-label">入口で伝える合言葉：</span>
+          <strong class="secret-word" id="ex-secret-word">------</strong>
+        </div>
+      </div>
+
+      <!-- 通常クリアバナー -->
+      <div id="result-normal-banner" class="banner-normal-clear">
+        <h2 class="normal-banner-title">🎉 アトラクション クリア！</h2>
+        <p class="normal-banner-desc">ご参加ありがとうございました！各問題の答え合わせです。</p>
+      </div>
+
+      <!-- 各問の結果・解説カード -->
+      <div id="result-cards-container" class="result-cards-grid"></div>
+
+      <!-- 案内終了ボタン -->
+      <button id="btn-finish-result" class="btn btn-success btn-finish-result" onclick="ResultApp.finishAndReady()">
+        ✅ 案内完了（待機状態にする）
+      </button>
+    </div>
+  </div>
+
+  <!-- スクリプトの読み込み -->
+  <script src="js/config.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/admin.js"></script>
+  <script src="js/quiz.js"></script>
+  <script src="js/result.js"></script>
+</body>
+</html>
