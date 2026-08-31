@@ -92,7 +92,7 @@ const QuizApp = {
 
       const newGroupId = myStatus.groupId;
       const assignedDiff = myStatus.difficulty || 'normal';
-      const customTime = myStatus.timeLimit || 180;
+      const customTime = myStatus.timeLimit || 60;
 
       // 新しいグループの到着検知
       if (newGroupId && newGroupId !== this.currentGroupId) {
@@ -163,7 +163,7 @@ const QuizApp = {
     this.showPlayView();
 
     // 入口指定の制限時間をセット
-    this.timeLeft = customTime || 180;
+    this.timeLeft = customTime || 60;
     this.startTimer();
   },
 
