@@ -1,33 +1,59 @@
 /**
- * result.js - 出口／リザルト端末用ロジック
+ * result.js - 出口／リザルト端末用ロジック（離脱検知対応版）
  */
 const ResultApp = {
   pollingTimer: null,
   currentGroupId: null,
   isExMode: false,
-
-  // EX挑戦権獲得時に客へ伝える合言葉（任意に変更可能）
   EX_SECRET_KEYWORD: 'フェニックス',
 
-  /**
-   * 初期化
-   */
   async init() {
     const role = AppStorage.getRole();
     if (role !== CONFIG.ROLES.EXIT) {
-      return; // 自身の役割ではない
+      return;
     }
 
-    // 画面表示
     document.getElementById('result-screen').classList.remove('hidden');
 
-    // 待機ポーリング開始
+    // 離脱イベント登録
+    this.setupExitListeners();
+
+    try {
+      await API.updateRoomStatus('exit', 'ready');
+    } catch (e) {
+      console.warn('出口の初期接続通知失敗:', e);
+    }
+
     this.startPolling();
   },
 
   /**
-   * statusシートのポーリング（進行合図の監視）
+   * ★画面離脱・タブ閉じ・スリープ時の検知リスナー
    */
+  setupExitListeners() {
+    const notifyExit = () => {
+      const payload = JSON.stringify({
+        action: 'updateRoomStatus',
+        roomKey: 'exit',
+        status: 'unknown'
+      });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(CONFIG.GAS_API_URL, payload);
+      }
+    };
+
+    window.addEventListener('pagehide', notifyExit);
+    window.addEventListener('beforeunload', notifyExit);
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        notifyExit();
+      } else if (document.visibilityState === 'visible') {
+        API.updateRoomStatus('exit', this.currentGroupId ? 'playing' : 'ready');
+      }
+    });
+  },
+
   startPolling() {
     this.checkStatus();
     if (this.pollingTimer) clearInterval(this.pollingTimer);
@@ -37,9 +63,6 @@ const ResultApp = {
     }, CONFIG.POLLING_INTERVAL_MS);
   },
 
-  /**
-   * 出口ブースのステータスを確認
-   */
   async checkStatus() {
     try {
       const res = await API.getStatus();
@@ -51,7 +74,6 @@ const ResultApp = {
       const newGroupId = exitStatus.groupId;
       const isEx = exitStatus.isEx;
 
-      // 新しいグループが到着した場合
       if (newGroupId && newGroupId !== this.currentGroupId) {
         this.currentGroupId = newGroupId;
         this.isExMode = isEx;
@@ -65,16 +87,11 @@ const ResultApp = {
     }
   },
 
-  /**
-   * グループ成績を取得してリザルトを描画
-   */
   async loadAndShowResult(groupId) {
     this.showLoadingView(groupId);
 
     try {
-      // 出口端末を「playing」に更新（案内中）
       await API.updateRoomStatus('exit', 'playing');
-
       const res = await API.getGroupResult(groupId);
       if (res && res.success) {
         this.renderResult(res.result);
@@ -88,16 +105,12 @@ const ResultApp = {
     }
   },
 
-  /**
-   * リザルト画面のレンダリング
-   */
   renderResult(data) {
     document.getElementById('result-group-id').textContent = data.groupId;
     
     const exBanner = document.getElementById('result-ex-banner');
     const normalBanner = document.getElementById('result-normal-banner');
 
-    // EX挑戦権（全問Hard & 全問正解）判定
     if (data.exQualified) {
       exBanner.classList.remove('hidden');
       normalBanner.classList.add('hidden');
@@ -107,7 +120,6 @@ const ResultApp = {
       normalBanner.classList.remove('hidden');
     }
 
-    // 第1問〜第3問のカード描画
     const questions = [
       { key: 'q1', num: 1, info: data.q1 },
       { key: 'q2', num: 2, info: data.q2 },
@@ -149,9 +161,6 @@ const ResultApp = {
     this.showContentVIew();
   },
 
-  /**
-   * スタッフ操作：案内完了（待機状態に戻す）
-   */
   async finishAndReady() {
     if (!confirm('客の案内を完了し、待機状態にしますか？')) return;
 
@@ -174,9 +183,6 @@ const ResultApp = {
     }
   },
 
-  // ==========================================
-  // 表示ビュー切り替え
-  // ==========================================
   showWaitingView() {
     document.getElementById('result-view-waiting').classList.remove('hidden');
     document.getElementById('result-view-loading').classList.add('hidden');
@@ -197,7 +203,6 @@ const ResultApp = {
   }
 };
 
-// DOMロード時に初期化
 document.addEventListener('DOMContentLoaded', () => {
   ResultApp.init();
 });
