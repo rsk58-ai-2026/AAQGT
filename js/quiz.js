@@ -7,6 +7,8 @@ const QuizApp = {
   currentGroupId: null,
   isLowBattery: false,
   pollingTimer: null,
+  lastPipelineVersion: null,
+  hasAnsweredCurrentGroup: false,
 
   cachedQuestions: [],
   currentQuestion: null,
@@ -60,7 +62,9 @@ const QuizApp = {
     this.isLowBattery = !this.isLowBattery;
     const btn = document.getElementById('btn-battery-quiz');
     btn.classList.toggle('active', this.isLowBattery);
-    btn.textContent = this.isLowBattery ? '🪫 充電低下 報告中' : '🔋 充電低下報告';
+    btn.innerHTML = this.isLowBattery 
+      ? '<span class="material-symbols-outlined icon-sm">battery_alert</span> 充電低下 報告中' 
+      : '<span class="material-symbols-outlined icon-sm">battery_alert</span> 充電低下';
     await API.reportLowBattery(this.roomKey, this.isLowBattery);
   },
 
@@ -87,6 +91,29 @@ const QuizApp = {
       const res = await API.getStatus();
       if (!res || !res.success) return;
 
+      // 1. 入口機（マスター）死活監視ロック
+      const lockOverlay = document.getElementById('master-lock-overlay');
+      if (!res.adminAlive) {
+        lockOverlay.classList.remove('hidden');
+        this.stopTimer();
+        return; // マスター未稼働時は以降の処理をブロック
+      } else {
+        lockOverlay.classList.add('hidden');
+      }
+
+      // 2. パイプライン進行（一斉進行）の検知
+      const currentVer = res.pipelineVersion;
+      if (this.lastPipelineVersion !== null && currentVer > this.lastPipelineVersion) {
+        // 一斉進行が押された瞬間
+        if (this.hasAnsweredCurrentGroup) {
+          // 直前の問題を解き終わっていた場合、ここで初めて移動案内を表示
+          this.showMoveView();
+          this.hasAnsweredCurrentGroup = false;
+        }
+      }
+      this.lastPipelineVersion = currentVer;
+
+      // 3. 部屋の割り当て状態を確認
       const myStatus = res.statuses[this.roomKey];
       if (!myStatus) return;
 
@@ -94,10 +121,11 @@ const QuizApp = {
       const assignedDiff = myStatus.difficulty || 'normal';
       const customTime = myStatus.timeLimit || 60;
 
-      // 新しいグループの到着検知
       if (newGroupId && newGroupId !== this.currentGroupId) {
+        // 新しいグループが到着 ➔ 出題画面へ
         this.currentGroupId = newGroupId;
         this.currentDifficulty = assignedDiff;
+        this.hasAnsweredCurrentGroup = false;
         this.onNewGroupArrived(customTime);
       } else if (!newGroupId && this.currentGroupId) {
         this.currentGroupId = null;
@@ -118,13 +146,22 @@ const QuizApp = {
     }
 
     await API.updateRoomStatus(this.roomKey, 'playing');
-    // 入口で指定された難易度・制限時間で即座に出題
     this.startQuiz(this.currentDifficulty, customTime);
   },
 
+  // 表示ビュー切り替え
   showWaitingView() {
     this.stopTimer();
     document.getElementById('quiz-view-waiting').classList.remove('hidden');
+    document.getElementById('quiz-view-answered').classList.add('hidden');
+    document.getElementById('quiz-view-move').classList.add('hidden');
+    document.getElementById('quiz-view-play').classList.add('hidden');
+  },
+
+  showAnsweredWaitingView() {
+    this.stopTimer();
+    document.getElementById('quiz-view-waiting').classList.add('hidden');
+    document.getElementById('quiz-view-answered').classList.remove('hidden');
     document.getElementById('quiz-view-move').classList.add('hidden');
     document.getElementById('quiz-view-play').classList.add('hidden');
   },
@@ -132,12 +169,14 @@ const QuizApp = {
   showMoveView() {
     this.stopTimer();
     document.getElementById('quiz-view-waiting').classList.add('hidden');
+    document.getElementById('quiz-view-answered').classList.add('hidden');
     document.getElementById('quiz-view-move').classList.remove('hidden');
     document.getElementById('quiz-view-play').classList.add('hidden');
   },
 
   showPlayView() {
     document.getElementById('quiz-view-waiting').classList.add('hidden');
+    document.getElementById('quiz-view-answered').classList.add('hidden');
     document.getElementById('quiz-view-move').classList.add('hidden');
     document.getElementById('quiz-view-play').classList.remove('hidden');
   },
@@ -162,7 +201,6 @@ const QuizApp = {
     this.renderQuestion();
     this.showPlayView();
 
-    // 入口指定の制限時間をセット
     this.timeLeft = customTime || 60;
     this.startTimer();
   },
@@ -172,7 +210,6 @@ const QuizApp = {
     document.getElementById('quiz-q-id').textContent = this.currentQuestion.id;
     document.getElementById('quiz-question-text').textContent = this.currentQuestion.question_text;
 
-    // 画像・動画の表示処理
     const mediaContainer = document.getElementById('quiz-media-container');
     mediaContainer.innerHTML = '';
     const mediaUrl = this.currentQuestion.media_url;
@@ -197,7 +234,7 @@ const QuizApp = {
     }
 
     const hintList = document.getElementById('hint-list');
-    hintList.innerHTML = '<div class="hint-empty">--</div>';
+    hintList.innerHTML = '<div class="hint-empty">開示されたヒントはありません</div>';
     document.getElementById('btn-next-hint').disabled = false;
   },
 
@@ -215,7 +252,7 @@ const QuizApp = {
 
     const hintItem = document.createElement('div');
     hintItem.className = 'hint-item';
-    hintItem.textContent = `ヒント${this.hintsRevealedCount}: ${nextHintText}`;
+    hintItem.innerHTML = `<span class="material-symbols-outlined icon-xs icon-gold">lightbulb</span> <strong>ヒント${this.hintsRevealedCount}:</strong> ${nextHintText}`;
     hintList.appendChild(hintItem);
 
     if (this.hintsRevealedCount >= totalHints) {
@@ -231,7 +268,6 @@ const QuizApp = {
       this.timeLeft--;
       this.updateTimerDisplay();
 
-      // 時間切れ時の自動誤答・自動待機送信
       if (this.timeLeft <= 0) {
         this.stopTimer();
         this.autoSubmitOnTimeUp();
@@ -255,7 +291,7 @@ const QuizApp = {
     const timerBox = document.getElementById('timer-box');
     if (timerElem) timerElem.textContent = formatted;
 
-    if (this.timeLeft <= 30 && timerBox) {
+    if (this.timeLeft <= 15 && timerBox) {
       timerBox.classList.add('timer-warning');
     } else if (timerBox) {
       timerBox.classList.remove('timer-warning');
@@ -274,7 +310,10 @@ const QuizApp = {
     try {
       await API.submitAnswer(payload);
     } catch (e) {}
-    this.showMoveView();
+
+    // 時間切れ直後は待機画面（勝手に移動させない）
+    this.hasAnsweredCurrentGroup = true;
+    this.showAnsweredWaitingView();
   },
 
   openJudgeModal(isCorrect) {
@@ -284,7 +323,9 @@ const QuizApp = {
     const answer = document.getElementById('modal-correct-answer');
     const time = document.getElementById('modal-time-left');
 
-    title.textContent = isCorrect ? '⭕ 正解' : '❌ 不正解';
+    title.innerHTML = isCorrect 
+      ? '<span class="material-symbols-outlined icon-md icon-success">check_circle</span> 正解として記録' 
+      : '<span class="material-symbols-outlined icon-md icon-danger">cancel</span> 不正解として記録';
     title.style.color = isCorrect ? '#22c55e' : '#ef4444';
     answer.textContent = this.currentQuestion.answer || '--';
     time.textContent = Math.max(0, this.timeLeft);
@@ -318,10 +359,12 @@ const QuizApp = {
       const res = await API.submitAnswer(payload);
       if (res && res.success) {
         this.closeJudgeModal();
-        this.showMoveView(); // 先にお進みください画面を表示
+        // 解答直後は待機画面（進行合図があるまで移動させない）
+        this.hasAnsweredCurrentGroup = true;
+        this.showAnsweredWaitingView();
       }
     } catch (e) {
-      alert('送信失敗');
+      alert('送信に失敗しました');
     } finally {
       submitBtn.disabled = false;
     }

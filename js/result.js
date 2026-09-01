@@ -45,7 +45,9 @@ const ResultApp = {
     this.isLowBattery = !this.isLowBattery;
     const btn = document.getElementById('btn-battery-result');
     btn.classList.toggle('active', this.isLowBattery);
-    btn.textContent = this.isLowBattery ? '🪫 充電低下 報告中' : '🔋 充電低下報告';
+    btn.innerHTML = this.isLowBattery 
+      ? '<span class="material-symbols-outlined icon-sm">battery_alert</span> 充電低下 報告中' 
+      : '<span class="material-symbols-outlined icon-sm">battery_alert</span> 充電低下';
     await API.reportLowBattery('exit', this.isLowBattery);
   },
 
@@ -59,6 +61,15 @@ const ResultApp = {
     try {
       const res = await API.getStatus();
       if (!res || !res.success) return;
+
+      // 入口機（マスター）死活監視ロック
+      const lockOverlay = document.getElementById('master-lock-overlay');
+      if (!res.adminAlive) {
+        lockOverlay.classList.remove('hidden');
+        return;
+      } else {
+        lockOverlay.classList.add('hidden');
+      }
 
       const exitStatus = res.statuses['exit'];
       if (!exitStatus) return;
@@ -125,13 +136,14 @@ const ResultApp = {
         <div class="result-card-header">
           <span class="result-q-title">第${q.num}問 (${q.info.difficulty.toUpperCase()})</span>
           <span class="result-judge-badge ${isCorrect ? 'badge-correct' : 'badge-wrong'}">
-            ${isCorrect ? '⭕ 正解' : '❌ 不正解'}
+            <span class="material-symbols-outlined icon-xs">${isCorrect ? 'check_circle' : 'cancel'}</span>
+            ${isCorrect ? '正解' : '不正解'}
           </span>
         </div>
         <div class="result-card-body">
           <p class="result-q-answer">解答: <span class="text-highlight">${q.info.answer || '--'}</span></p>
           ${q.info.explanation ? `<p class="result-q-exp">${q.info.explanation}</p>` : ''}
-          <div class="result-q-time">残: ${q.info.timeLeft || 0}秒</div>
+          <div class="result-q-time">残り時間: ${q.info.timeLeft || 0}秒</div>
         </div>
       `;
       container.appendChild(card);

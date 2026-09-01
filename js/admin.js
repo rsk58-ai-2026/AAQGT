@@ -26,7 +26,7 @@ const AdminApp = {
   },
 
   resetDeviceRole() {
-    if (confirm('端末の役割を変更しますか？')) {
+    if (confirm('端末の役割設定を変更しますか？')) {
       AppStorage.clearRole();
       location.reload();
     }
@@ -53,7 +53,6 @@ const AdminApp = {
         syncText.textContent = new Date().toLocaleTimeString();
         this.renderStatuses(res.statuses, res.canAdvance);
 
-        // 第1問にいるグループを検知して自動で次グループ番号(+1)を計算
         const r1Group = res.statuses.room1?.groupId;
         if (r1Group && r1Group !== this.lastRoom1Group) {
           this.lastRoom1Group = r1Group;
@@ -89,7 +88,6 @@ const AdminApp = {
         statusLabel.textContent = '未接続';
       }
 
-      // バッテリーアラート表示
       if (batteryAlert) {
         if (roomData.lowBattery) {
           batteryAlert.classList.remove('hidden');
@@ -99,7 +97,7 @@ const AdminApp = {
       }
 
       if (roomData.groupId) {
-        const exPrefix = roomData.isEx ? '🔥[EX] ' : '';
+        const exPrefix = roomData.isEx ? '[EX] ' : '';
         groupBadge.textContent = `${exPrefix}${roomData.groupId}`;
       } else {
         groupBadge.textContent = '--';
@@ -149,7 +147,7 @@ const AdminApp = {
     this.isAdvancing = true;
     const advanceBtn = document.getElementById('btn-advance');
     advanceBtn.disabled = true;
-    advanceBtn.textContent = '進行処理中...';
+    advanceBtn.innerHTML = '<span class="material-symbols-outlined icon-md">sync</span> 進行処理中...';
 
     try {
       const res = await API.advancePipeline(nextGroupId, selectedDifficulty, timeLimit);
@@ -159,10 +157,10 @@ const AdminApp = {
         alert('エラー: ' + (res.error || ''));
       }
     } catch (error) {
-      alert('通信失敗');
+      alert('通信に失敗しました');
     } finally {
       this.isAdvancing = false;
-      advanceBtn.textContent = '➡️ 全ブースを一斉進行';
+      advanceBtn.innerHTML = '<span class="material-symbols-outlined icon-md">fast_forward</span> 全ブースを一斉進行';
     }
   }
 };
