@@ -92,17 +92,7 @@ const QuizApp = {
       const res = await API.getStatus();
       if (!res || !res.success) return;
 
-      // 1. 入口機（マスター）死活監視ロック
-      const lockOverlay = document.getElementById('master-lock-overlay');
-      if (!res.adminAlive) {
-        lockOverlay.classList.remove('hidden');
-        this.stopTimer();
-        return;
-      } else {
-        lockOverlay.classList.add('hidden');
-      }
-
-      // 2. 緊急一時停止の検知
+      // 1. 緊急一時停止の検知
       const pauseOverlay = document.getElementById('pause-lock-overlay');
       if (res.systemPaused) {
         if (!this.isPausedBySystem) {
@@ -110,12 +100,11 @@ const QuizApp = {
           this.stopTimer();
           pauseOverlay.classList.remove('hidden');
         }
-        return; // 一時停止中は以降の処理を行わない
+        return;
       } else {
         if (this.isPausedBySystem) {
           this.isPausedBySystem = false;
           pauseOverlay.classList.add('hidden');
-          // プレイ中画面ならタイマー再開
           const isPlayVisible = !document.getElementById('quiz-view-play').classList.contains('hidden');
           if (isPlayVisible && this.timeLeft > 0) {
             this.startTimer();
@@ -123,7 +112,7 @@ const QuizApp = {
         }
       }
 
-      // 3. パイプライン進行（一斉進行）の検知
+      // 2. パイプライン進行（一斉進行）の検知
       const currentVer = res.pipelineVersion;
       if (this.lastPipelineVersion !== null && currentVer > this.lastPipelineVersion) {
         if (this.hasAnsweredCurrentGroup) {
@@ -133,7 +122,7 @@ const QuizApp = {
       }
       this.lastPipelineVersion = currentVer;
 
-      // 4. 部屋の割り当て状態を確認
+      // 3. 部屋の割り当て状態を確認
       const myStatus = res.statuses[this.roomKey];
       if (!myStatus) return;
 
@@ -221,7 +210,6 @@ const QuizApp = {
     this.timeLeft = customTime || 60;
     this.startTimer();
 
-    // 出題中問題と残り時間をバックヤードへ同期
     API.updateRoomStatus(this.roomKey, 'playing', this.currentQuestion.id, this.timeLeft);
   },
 
@@ -290,7 +278,6 @@ const QuizApp = {
       this.timeLeft--;
       this.updateTimerDisplay();
 
-      // 5秒おきに残り時間をGASへ同期
       if (this.timeLeft % 5 === 0) {
         API.updateRoomStatus(this.roomKey, 'playing', this.currentQuestion?.id, this.timeLeft);
       }
