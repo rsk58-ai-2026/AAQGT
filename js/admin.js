@@ -133,7 +133,7 @@ const AdminApp = {
     if (this.isAdvancing) return;
 
     const nextGroupId = document.getElementById('next-group-id').value.trim();
-    const timeLimit = parseInt(document.getElementById('custom-time-limit').value, 10) || 180;
+    const timeLimit = parseInt(document.getElementById('custom-time-limit').value, 10) || 60;
     const diffRadio = document.querySelector('input[name="admin-diff"]:checked');
     const selectedDifficulty = diffRadio ? diffRadio.value : 'normal';
 
