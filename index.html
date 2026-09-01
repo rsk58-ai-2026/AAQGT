@@ -10,24 +10,7 @@
 <body>
 
   <!-- ========================================== -->
-  <!-- 0-A. マスター未起動ロック画面               -->
-  <!-- ========================================== -->
-  <div id="master-lock-overlay" class="modal-overlay hidden">
-    <div class="card lock-card text-center">
-      <div class="lock-icon-pulse">
-        <span class="material-symbols-outlined icon-xxl icon-warning">lock</span>
-      </div>
-      <h2 class="lock-title">システム待機中</h2>
-      <p class="lock-subtitle">
-        入口機（マスター）の起動を確認しています…<br>
-        入口機が起動するまでこの端末は操作できません。
-      </p>
-      <div class="loading-bar"></div>
-    </div>
-  </div>
-
-  <!-- ========================================== -->
-  <!-- 0-B. 緊急一時停止（トラブル中断）オーバーレイ -->
+  <!-- 0. 緊急一時停止（トラブル中断）オーバーレイ -->
   <!-- ========================================== -->
   <div id="pause-lock-overlay" class="modal-overlay hidden">
     <div class="card pause-card text-center">
@@ -197,7 +180,7 @@
   </div>
 
   <!-- ========================================== -->
-  <!-- 3. 管理者機 画面 (Manager) 【新設】         -->
+  <!-- 3. 管理者機 画面 (Manager)                  -->
   <!-- ========================================== -->
   <div id="manager-screen" class="screen-container hidden">
     <header class="app-header">
@@ -222,7 +205,6 @@
     </header>
 
     <main class="admin-main">
-      <!-- 緊急一時停止発動中のバナー -->
       <div id="manager-paused-banner" class="banner-paused hidden">
         <span class="material-symbols-outlined icon-lg">pause_circle</span>
         <div>
@@ -231,7 +213,6 @@
         </div>
       </div>
 
-      <!-- 全体設定カード -->
       <section class="section-card">
         <div class="manager-settings-row">
           <div class="form-group flex-1">
@@ -247,12 +228,9 @@
         </div>
       </section>
 
-      <!-- 全ブース詳細監視パネル -->
       <section class="section-card">
         <h2 class="section-title">全ブース 詳細リアルタイム監視</h2>
-        <div class="manager-grid" id="manager-booth-grid">
-          <!-- JSで4部屋の詳細カードを動的生成 -->
-        </div>
+        <div class="manager-grid" id="manager-booth-grid"></div>
       </section>
     </main>
   </div>
