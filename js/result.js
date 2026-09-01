@@ -62,15 +62,6 @@ const ResultApp = {
       const res = await API.getStatus();
       if (!res || !res.success) return;
 
-      // 入口機（マスター）死活監視ロック
-      const lockOverlay = document.getElementById('master-lock-overlay');
-      if (!res.adminAlive) {
-        lockOverlay.classList.remove('hidden');
-        return;
-      } else {
-        lockOverlay.classList.add('hidden');
-      }
-
       const exitStatus = res.statuses['exit'];
       if (!exitStatus) return;
 
