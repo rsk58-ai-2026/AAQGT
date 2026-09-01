@@ -16,6 +16,7 @@ const QuizApp = {
   hintsRevealedCount: 0,
   timeLeft: 0,
   timerInterval: null,
+  isPausedBySystem: false,
   pendingJudgeResult: null,
 
   async init() {
@@ -96,33 +97,51 @@ const QuizApp = {
       if (!res.adminAlive) {
         lockOverlay.classList.remove('hidden');
         this.stopTimer();
-        return; // マスター未稼働時は以降の処理をブロック
+        return;
       } else {
         lockOverlay.classList.add('hidden');
       }
 
-      // 2. パイプライン進行（一斉進行）の検知
+      // 2. 緊急一時停止の検知
+      const pauseOverlay = document.getElementById('pause-lock-overlay');
+      if (res.systemPaused) {
+        if (!this.isPausedBySystem) {
+          this.isPausedBySystem = true;
+          this.stopTimer();
+          pauseOverlay.classList.remove('hidden');
+        }
+        return; // 一時停止中は以降の処理を行わない
+      } else {
+        if (this.isPausedBySystem) {
+          this.isPausedBySystem = false;
+          pauseOverlay.classList.add('hidden');
+          // プレイ中画面ならタイマー再開
+          const isPlayVisible = !document.getElementById('quiz-view-play').classList.contains('hidden');
+          if (isPlayVisible && this.timeLeft > 0) {
+            this.startTimer();
+          }
+        }
+      }
+
+      // 3. パイプライン進行（一斉進行）の検知
       const currentVer = res.pipelineVersion;
       if (this.lastPipelineVersion !== null && currentVer > this.lastPipelineVersion) {
-        // 一斉進行が押された瞬間
         if (this.hasAnsweredCurrentGroup) {
-          // 直前の問題を解き終わっていた場合、ここで初めて移動案内を表示
           this.showMoveView();
           this.hasAnsweredCurrentGroup = false;
         }
       }
       this.lastPipelineVersion = currentVer;
 
-      // 3. 部屋の割り当て状態を確認
+      // 4. 部屋の割り当て状態を確認
       const myStatus = res.statuses[this.roomKey];
       if (!myStatus) return;
 
       const newGroupId = myStatus.groupId;
       const assignedDiff = myStatus.difficulty || 'normal';
-      const customTime = myStatus.timeLimit || 60;
+      const customTime = myStatus.timeLimit || res.globalTimeLimit || 60;
 
       if (newGroupId && newGroupId !== this.currentGroupId) {
-        // 新しいグループが到着 ➔ 出題画面へ
         this.currentGroupId = newGroupId;
         this.currentDifficulty = assignedDiff;
         this.hasAnsweredCurrentGroup = false;
@@ -145,11 +164,9 @@ const QuizApp = {
       exBadge.classList.add('hidden');
     }
 
-    await API.updateRoomStatus(this.roomKey, 'playing');
     this.startQuiz(this.currentDifficulty, customTime);
   },
 
-  // 表示ビュー切り替え
   showWaitingView() {
     this.stopTimer();
     document.getElementById('quiz-view-waiting').classList.remove('hidden');
@@ -203,6 +220,9 @@ const QuizApp = {
 
     this.timeLeft = customTime || 60;
     this.startTimer();
+
+    // 出題中問題と残り時間をバックヤードへ同期
+    API.updateRoomStatus(this.roomKey, 'playing', this.currentQuestion.id, this.timeLeft);
   },
 
   renderQuestion() {
@@ -265,8 +285,15 @@ const QuizApp = {
     this.stopTimer();
 
     this.timerInterval = setInterval(() => {
+      if (this.isPausedBySystem) return;
+
       this.timeLeft--;
       this.updateTimerDisplay();
+
+      // 5秒おきに残り時間をGASへ同期
+      if (this.timeLeft % 5 === 0) {
+        API.updateRoomStatus(this.roomKey, 'playing', this.currentQuestion?.id, this.timeLeft);
+      }
 
       if (this.timeLeft <= 0) {
         this.stopTimer();
@@ -311,7 +338,6 @@ const QuizApp = {
       await API.submitAnswer(payload);
     } catch (e) {}
 
-    // 時間切れ直後は待機画面（勝手に移動させない）
     this.hasAnsweredCurrentGroup = true;
     this.showAnsweredWaitingView();
   },
@@ -359,7 +385,6 @@ const QuizApp = {
       const res = await API.submitAnswer(payload);
       if (res && res.success) {
         this.closeJudgeModal();
-        // 解答直後は待機画面（進行合図があるまで移動させない）
         this.hasAnsweredCurrentGroup = true;
         this.showAnsweredWaitingView();
       }

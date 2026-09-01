@@ -18,27 +18,17 @@ body {
   flex-direction: column;
 }
 
-.hidden {
-  display: none !important;
-}
+.hidden { display: none !important; }
+.text-center { text-align: center; }
+.text-highlight { color: #38bdf8; font-weight: bold; }
+.text-success { color: #10b981; }
+.text-danger { color: #ef4444; }
+.font-bold { font-weight: bold; }
+.font-mono { font-family: monospace; }
+.flex-1 { flex: 1; }
 
-.text-center {
-  text-align: center;
-}
-
-.text-highlight {
-  color: #38bdf8;
-  font-weight: bold;
-}
-
-/* ==========================================
-   Material Symbols ユーティリティ
-   ========================================== */
-.material-symbols-outlined {
-  vertical-align: middle;
-  line-height: 1;
-}
-
+/* Material Symbols */
+.material-symbols-outlined { vertical-align: middle; line-height: 1; }
 .icon-xs { font-size: 16px !important; }
 .icon-sm { font-size: 20px !important; }
 .icon-md { font-size: 24px !important; }
@@ -46,16 +36,13 @@ body {
 .icon-xl { font-size: 48px !important; }
 .icon-xxl { font-size: 64px !important; }
 .icon-hero { font-size: 80px !important; }
-
 .icon-warning { color: #f59e0b; }
 .icon-danger { color: #ef4444; }
 .icon-success { color: #10b981; }
 .icon-accent { color: #38bdf8; }
 .icon-gold { color: #fbbf24; }
 
-/* ==========================================
-   共通コンポーネント
-   ========================================== */
+/* 共通コンポーネント */
 .screen-container {
   flex: 1;
   display: flex;
@@ -74,19 +61,8 @@ body {
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
 }
 
-.title {
-  font-size: 26px;
-  font-weight: bold;
-  text-align: center;
-  margin-bottom: 8px;
-}
-
-.subtitle {
-  font-size: 14px;
-  color: #94a3b8;
-  text-align: center;
-  margin-bottom: 24px;
-}
+.title { font-size: 26px; font-weight: bold; text-align: center; margin-bottom: 8px; }
+.subtitle { font-size: 14px; color: #94a3b8; text-align: center; margin-bottom: 24px; }
 
 /* ボタン */
 .btn {
@@ -102,11 +78,7 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
 }
-
-.btn:active {
-  transform: scale(0.97);
-}
-
+.btn:active { transform: scale(0.97); }
 .btn-primary { background: #3b82f6; color: #fff; }
 .btn-secondary { background: #475569; color: #fff; }
 .btn-success { background: #10b981; color: #fff; }
@@ -117,15 +89,8 @@ body {
   border: 1px solid #ef4444;
   color: #ef4444;
 }
-.btn-outline-danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.btn-sm {
-  padding: 8px 12px;
-  font-size: 13px;
-  border-radius: 8px;
-}
+.btn-outline-danger:hover { background: rgba(239, 68, 68, 0.1); }
+.btn-sm { padding: 8px 12px; font-size: 13px; border-radius: 8px; }
 
 /* バッジ */
 .badge {
@@ -138,6 +103,7 @@ body {
   font-weight: bold;
 }
 .badge-admin { background: #3b82f6; color: #fff; }
+.badge-manager { background: #d97706; color: #fff; }
 .badge-quiz { background: #6366f1; color: #fff; }
 .badge-exit { background: #10b981; color: #fff; }
 .badge-ex { background: #ef4444; color: #fff; animation: blink 1.2s infinite; }
@@ -151,172 +117,80 @@ body {
   color: #f8fafc;
 }
 
-/* ==========================================
-   マスター未起動ロック画面
-   ========================================== */
-.lock-card {
-  max-width: 500px;
-  width: 100%;
-  padding: 40px 30px;
-  border: 2px solid #f59e0b;
-  box-shadow: 0 0 35px rgba(245, 158, 11, 0.4);
-}
-
-.lock-icon-pulse {
-  margin-bottom: 20px;
-  animation: pulse 1.5s infinite;
-}
-
-.lock-title {
-  font-size: 26px;
-  color: #f59e0b;
-  margin-bottom: 12px;
-}
-
-.lock-subtitle {
-  font-size: 15px;
-  color: #cbd5e1;
-  line-height: 1.6;
-  margin-bottom: 24px;
-}
-
-.loading-bar {
-  height: 6px;
-  width: 100%;
+.group-pill-sm {
+  font-size: 13px;
+  font-weight: bold;
   background: #334155;
-  border-radius: 3px;
-  overflow: hidden;
-  position: relative;
+  padding: 2px 8px;
+  border-radius: 12px;
+  color: #38bdf8;
+  margin-left: 6px;
 }
 
-.loading-bar::after {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; height: 100%; width: 40%;
-  background: #f59e0b;
-  border-radius: 3px;
-  animation: loading-slide 1.5s infinite ease-in-out;
+/* ==========================================
+   モーダル / ロック画面
+   ========================================== */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+  padding: 20px;
 }
 
-@keyframes loading-slide {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(300%); }
-}
+.lock-card { max-width: 500px; width: 100%; padding: 40px 30px; border: 2px solid #f59e0b; }
+.lock-icon-pulse { margin-bottom: 20px; animation: pulse 1.5s infinite; }
+.lock-title { font-size: 26px; color: #f59e0b; margin-bottom: 12px; }
+.lock-subtitle { font-size: 15px; color: #cbd5e1; line-height: 1.6; margin-bottom: 24px; }
+
+.pause-card { max-width: 520px; width: 100%; padding: 40px 30px; border: 2px solid #ef4444; box-shadow: 0 0 40px rgba(239, 68, 68, 0.4); }
+.pause-title { font-size: 28px; color: #ef4444; margin-bottom: 12px; }
+.pause-subtitle { font-size: 16px; color: #cbd5e1; line-height: 1.6; margin-bottom: 20px; }
+.pause-badge { display: inline-block; background: #0f172a; border: 1px solid #475569; padding: 8px 16px; border-radius: 20px; font-size: 13px; color: #94a3b8; }
+
+.loading-bar { height: 6px; width: 100%; background: #334155; border-radius: 3px; overflow: hidden; position: relative; }
+.loading-bar::after { content: ''; position: absolute; top: 0; left: 0; height: 100%; width: 40%; background: #f59e0b; border-radius: 3px; animation: loading-slide 1.5s infinite ease-in-out; }
+@keyframes loading-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
 
 /* ==========================================
    0. 役割選択画面
    ========================================== */
-.select-card {
-  max-width: 600px;
-  margin: 40px auto;
-  width: 100%;
-}
-
-.role-button-group {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.btn-role {
-  background: #334155;
-  color: #fff;
-  padding: 16px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 16px;
-  text-align: left;
-  border: 1px solid #475569;
-}
-.btn-role:hover {
-  background: #3b82f6;
-  border-color: #60a5fa;
-}
-
-.role-icon {
-  font-size: 32px !important;
-  color: #38bdf8;
-}
-
-.role-title {
-  font-size: 18px;
-  display: block;
-}
+.select-card { max-width: 650px; margin: 20px auto; width: 100%; }
+.role-button-group { display: flex; flex-direction: column; gap: 10px; }
+.btn-role { background: #334155; color: #fff; padding: 14px 18px; display: flex; align-items: center; justify-content: flex-start; gap: 14px; text-align: left; border: 1px solid #475569; }
+.btn-role:hover { background: #3b82f6; border-color: #60a5fa; }
+.btn-role-manager { border-left: 6px solid #f59e0b; }
+.btn-role-manager:hover { background: #b45309; border-color: #fde047; }
+.role-icon { font-size: 30px !important; color: #38bdf8; }
+.role-title { font-size: 17px; display: block; font-weight: bold; }
+.role-desc { font-size: 12px; color: #94a3b8; display: block; }
 
 /* ==========================================
-   1. 運営管理画面 (Admin)
+   1. 入口 / 進行画面 (Entry)
    ========================================== */
-.app-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #334155;
-  margin-bottom: 20px;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: #94a3b8;
-}
-
-.sync-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #22c55e;
-  display: inline-block;
-}
+.app-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid #334155; margin-bottom: 20px; }
+.header-left { display: flex; align-items: center; gap: 16px; }
+.header-right-actions { display: flex; align-items: center; gap: 8px; }
+.status-indicator { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #94a3b8; }
+.sync-dot { width: 10px; height: 10px; border-radius: 50%; background: #22c55e; display: inline-block; }
 .sync-dot.syncing { background: #eab308; animation: pulse 1s infinite; }
 .sync-dot.error { background: #ef4444; }
 
-.section-card {
-  background: #1e293b;
-  border-radius: 16px;
-  padding: 20px;
-  border: 1px solid #334155;
-  margin-bottom: 20px;
-}
+.section-card { background: #1e293b; border-radius: 16px; padding: 20px; border: 1px solid #334155; margin-bottom: 20px; }
+.section-title { font-size: 18px; margin-bottom: 16px; color: #cbd5e1; }
 
-.section-title {
-  font-size: 18px;
-  margin-bottom: 16px;
-  color: #cbd5e1;
-}
-
-.pipeline-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-}
+.pipeline-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 @media (max-width: 800px) { .pipeline-grid { grid-template-columns: repeat(2, 1fr); } }
 
-.room-card {
-  background: #0f172a;
-  border-radius: 12px;
-  padding: 16px;
-  border: 2px solid #334155;
-  transition: all 0.3s ease;
-}
+.room-card { background: #0f172a; border-radius: 12px; padding: 16px; border: 2px solid #334155; transition: all 0.3s ease; }
 .room-card.status-ready { border-color: #22c55e; background: rgba(34, 197, 94, 0.05); }
 .room-card.status-playing { border-color: #f97316; background: rgba(249, 115, 22, 0.05); }
-
 .room-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .room-name { font-size: 14px; font-weight: bold; color: #94a3b8; }
 .status-lamp { width: 14px; height: 14px; border-radius: 50%; background: #64748b; }
 .status-ready .status-lamp { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
 .status-playing .status-lamp { background: #f97316; box-shadow: 0 0 10px #f97316; animation: blink 1.2s infinite; }
-
 .room-body { text-align: center; }
 .group-badge { font-size: 18px; font-weight: bold; padding: 8px 12px; background: #1e293b; border-radius: 8px; margin-bottom: 8px; }
 .status-label { font-size: 12px; color: #94a3b8; }
@@ -325,58 +199,91 @@ body {
 
 .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: center; }
 @media (max-width: 800px) { .control-grid { grid-template-columns: 1fr; } }
-
 .form-group { margin-bottom: 16px; }
 .form-label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
+.form-hint { font-size: 12px; color: #64748b; margin-top: 4px; display: block; }
 .form-input { width: 100%; background: #0f172a; border: 1px solid #334155; color: #fff; padding: 12px 16px; border-radius: 10px; font-size: 16px; }
+.input-with-action { display: flex; gap: 8px; }
 
-.diff-selector {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-top: 4px;
-  font-size: 14px;
-}
-.diff-selector label {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.radio-ex {
-  accent-color: #ef4444;
-}
+.diff-selector { display: flex; gap: 12px; align-items: center; margin-top: 4px; font-size: 14px; }
+.diff-selector label { cursor: pointer; display: flex; align-items: center; gap: 4px; }
+.radio-ex { accent-color: #ef4444; }
 
 .control-action { display: flex; flex-direction: column; gap: 10px; }
-.advance-warning {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #f97316;
-  background: rgba(249, 115, 22, 0.1);
-  padding: 8px;
-  border-radius: 8px;
-}
-.btn-advance {
-  width: 100%;
-  height: 70px;
-  font-size: 20px;
-  background: #10b981;
-  color: #fff;
-  border-radius: 16px;
-  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
-}
+.advance-warning { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 13px; color: #f97316; background: rgba(249, 115, 22, 0.1); padding: 8px; border-radius: 8px; }
+.btn-advance { width: 100%; height: 70px; font-size: 20px; background: #10b981; color: #fff; border-radius: 16px; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4); }
 .btn-advance:not(:disabled) { animation: pulse-ready 2s infinite; }
 .btn-advance:disabled { background: #334155; color: #64748b; box-shadow: none; cursor: not-allowed; }
 
 /* ==========================================
-   2. 問題機ブース画面 (Quiz)
-   ========================================= */
+   2. 管理者機 画面 (Manager)
+   ========================================== */
+.banner-paused {
+  background: #7f1d1d;
+  border: 2px solid #ef4444;
+  border-radius: 12px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  color: #fff;
+  animation: pulse-ready 1.5s infinite;
+}
+.banner-paused strong { font-size: 18px; display: block; margin-bottom: 4px; }
+.banner-paused p { font-size: 13px; color: #fecaca; }
+
+.manager-settings-row { display: flex; gap: 20px; align-items: flex-end; }
+
+.manager-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+@media (max-width: 800px) { .manager-grid { grid-template-columns: 1fr; } }
+
+.manager-detail-card {
+  background: #0f172a;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #334155;
+  transition: all 0.2s ease;
+}
+.manager-detail-card.is-playing {
+  border-color: #38bdf8;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.15);
+}
+
+.manager-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1e293b;
+  margin-bottom: 12px;
+}
+.manager-booth-name { font-size: 16px; color: #f8fafc; }
+.manager-head-badges { display: flex; align-items: center; gap: 6px; }
+
+.manager-stat-row {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.stat-label { width: 85px; color: #94a3b8; flex-shrink: 0; }
+.stat-value { color: #cbd5e1; word-break: break-all; }
+.question-snippet .snippet-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 12px;
+  color: #e2e8f0;
+}
+.timer-val { font-size: 15px; font-weight: bold; color: #38bdf8; }
+
+/* ==========================================
+   3. 問題機ブース画面 (Quiz)
+   ========================================== */
 .quiz-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid #334155; }
 .quiz-header-info { display: flex; align-items: center; gap: 12px; }
-.header-right-actions { display: flex; align-items: center; gap: 8px; }
 
 .btn-warning { background: #f59e0b; color: #000; }
 .btn-warning.active { background: #ef4444; color: #fff; animation: blink 1s infinite; }
@@ -397,33 +304,10 @@ body {
 .waiting-title { font-size: 28px; margin-bottom: 12px; }
 .waiting-subtitle { color: #94a3b8; font-size: 16px; max-width: 500px; margin: 0 auto; line-height: 1.6; }
 
-/* 先にお進みください 画面 */
-.move-card {
-  padding: 60px 20px;
-  margin-top: 30px;
-  background: #1e293b;
-  border: 2px solid #38bdf8;
-  box-shadow: 0 0 35px rgba(56, 189, 248, 0.4);
-}
-.move-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  color: #38bdf8;
-  margin-bottom: 20px;
-}
-.move-text {
-  font-size: 36px;
-  font-weight: bold;
-  color: #38bdf8;
-  line-height: 1.4;
-  margin-bottom: 24px;
-}
-.move-arrow-anim {
-  color: #38bdf8;
-  animation: pulse-ready 1.5s infinite;
-}
+.move-card { padding: 60px 20px; margin-top: 30px; background: #1e293b; border: 2px solid #38bdf8; box-shadow: 0 0 35px rgba(56, 189, 248, 0.4); }
+.move-icon { display: flex; align-items: center; justify-content: center; gap: 16px; color: #38bdf8; margin-bottom: 20px; }
+.move-text { font-size: 36px; font-weight: bold; color: #38bdf8; line-height: 1.4; margin-bottom: 24px; }
+.move-arrow-anim { color: #38bdf8; animation: pulse-ready 1.5s infinite; }
 
 .quiz-top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .difficulty-tag { background: #334155; padding: 6px 14px; border-radius: 8px; font-weight: bold; font-size: 14px; }
@@ -448,21 +332,10 @@ body {
 .btn-judge { height: 60px; font-size: 18px; border-radius: 14px; }
 
 /* ==========================================
-   3. 出口／リザルト画面 (Result)
+   4. 出口／リザルト画面 (Result)
    ========================================== */
 .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid #334155; }
-
-.banner-ex-qualified {
-  background: linear-gradient(135deg, #b45309, #d97706, #f59e0b);
-  border: 2px solid #fde047;
-  border-radius: 16px;
-  padding: 24px;
-  text-align: center;
-  color: #fff;
-  margin-bottom: 24px;
-  box-shadow: 0 0 25px rgba(245, 158, 11, 0.6);
-  animation: pulse-ready 2s infinite;
-}
+.banner-ex-qualified { background: linear-gradient(135deg, #b45309, #d97706, #f59e0b); border: 2px solid #fde047; border-radius: 16px; padding: 24px; text-align: center; color: #fff; margin-bottom: 24px; box-shadow: 0 0 25px rgba(245, 158, 11, 0.6); animation: pulse-ready 2s infinite; }
 .ex-banner-title { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 26px; font-weight: 900; margin-bottom: 8px; }
 .ex-banner-desc { font-size: 14px; color: #fef08a; margin-bottom: 16px; }
 .ex-secret-box { background: #0f172a; padding: 12px 20px; border-radius: 12px; display: inline-flex; align-items: center; gap: 12px; border: 1px solid #fde047; }
@@ -482,6 +355,8 @@ body {
 .result-judge-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: bold; padding: 4px 10px; border-radius: 8px; }
 .badge-correct { background: rgba(16, 185, 129, 0.2); color: #34d399; }
 .badge-wrong { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+.badge-warning { background: rgba(249, 115, 22, 0.2); color: #fb923c; }
+.badge-secondary { background: #334155; color: #94a3b8; }
 
 .result-card-body p { font-size: 15px; line-height: 1.5; margin-bottom: 6px; }
 .result-q-answer { color: #cbd5e1; }
@@ -489,15 +364,7 @@ body {
 .result-q-time { font-size: 13px; color: #64748b; margin-top: 8px; }
 .btn-finish-result { width: 100%; height: 64px; font-size: 18px; border-radius: 14px; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3); }
 
-/* モーダル */
-.modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 1000;
-  padding: 20px;
-}
+/* モーダルカード */
 .modal-card { max-width: 450px; width: 100%; text-align: center; }
 .modal-title { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 20px; margin-bottom: 12px; }
 .modal-subtitle { color: #94a3b8; font-size: 14px; margin-bottom: 8px; }

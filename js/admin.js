@@ -1,5 +1,5 @@
 /**
- * admin.js - 入口／運営管理
+ * admin.js - 入口／進行機
  */
 const AdminApp = {
   pollingTimer: null,
@@ -131,7 +131,6 @@ const AdminApp = {
     if (this.isAdvancing) return;
 
     const nextGroupId = document.getElementById('next-group-id').value.trim();
-    const timeLimit = parseInt(document.getElementById('custom-time-limit').value, 10) || 60;
     const diffRadio = document.querySelector('input[name="admin-diff"]:checked');
     const selectedDifficulty = diffRadio ? diffRadio.value : 'normal';
 
@@ -140,7 +139,7 @@ const AdminApp = {
       return;
     }
 
-    if (!confirm(`[ ${nextGroupId} ] (難易度: ${selectedDifficulty} / 制限時間: ${timeLimit}秒) を投入して進行しますか？`)) {
+    if (!confirm(`[ ${nextGroupId} ] (難易度: ${selectedDifficulty}) を投入して全体を1つ進めますか？`)) {
       return;
     }
 
@@ -150,7 +149,7 @@ const AdminApp = {
     advanceBtn.innerHTML = '<span class="material-symbols-outlined icon-md">sync</span> 進行処理中...';
 
     try {
-      const res = await API.advancePipeline(nextGroupId, selectedDifficulty, timeLimit);
+      const res = await API.advancePipeline(nextGroupId, selectedDifficulty);
       if (res && res.success) {
         await this.fetchStatus();
       } else {

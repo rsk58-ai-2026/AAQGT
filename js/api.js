@@ -57,11 +57,14 @@ const API = {
     return await this.get({ action: 'getGroupResult', groupId: groupId });
   },
 
-  async updateRoomStatus(roomKey, status) {
+  async updateRoomStatus(roomKey, status, questionId, timeLeft, lastJudge) {
     return await this.post({
       action: 'updateRoomStatus',
       roomKey: roomKey,
-      status: status
+      status: status,
+      questionId: questionId,
+      timeLeft: timeLeft,
+      lastJudge: lastJudge
     });
   },
 
@@ -80,12 +83,32 @@ const API = {
     });
   },
 
-  async advancePipeline(newGroupId, difficulty, timeLimit) {
+  async advancePipeline(newGroupId, difficulty) {
     return await this.post({
       action: 'advancePipeline',
       newGroupId: newGroupId,
-      difficulty: difficulty,
+      difficulty: difficulty
+    });
+  },
+
+  // --- 管理者専用API ---
+  async setGlobalTimeLimit(timeLimit) {
+    return await this.post({
+      action: 'setGlobalTimeLimit',
       timeLimit: timeLimit
+    });
+  },
+
+  async toggleEmergencyPause(isPaused) {
+    return await this.post({
+      action: 'toggleEmergencyPause',
+      isPaused: isPaused
+    });
+  },
+
+  async resetAllStatus() {
+    return await this.post({
+      action: 'resetAllStatus'
     });
   }
 };
