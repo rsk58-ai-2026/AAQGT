@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * admin.js - 入口／進行機（モニタリング専用ダッシュボード）
+ * admin.js - 入口／進行機（オンライン判定＆モニタリングダッシュボード）
  */
 const AdminApp = {
   pollingTimer: null,
@@ -62,8 +62,8 @@ const AdminApp = {
         // 2. 管理機からのPACE指示バナー (WAIT / PUSH)
         this.renderPaceSignalBanner(res.paceSignal);
 
-        // 3. 各部屋のリアルタイムモニタリング表示
-        this.renderMonitoringDashboard(res.statuses);
+        // 3. 各部屋のリアルタイムモニタリング表示 (オンライン状態含む)
+        this.renderMonitoringDashboard(res.statuses, res.serverTime);
       }
     } catch (error) {
       if (syncDot) syncDot.className = 'sync-dot error';
@@ -92,12 +92,14 @@ const AdminApp = {
     }
   },
 
-  renderMonitoringDashboard(statuses) {
+  renderMonitoringDashboard(statuses, serverTime) {
     const rooms = [
       { key: 'room1', name: 'NODE 1 [ALPHA]' },
       { key: 'room2', name: 'NODE 2 [BETA]' },
       { key: 'room3', name: 'NODE 3 [CORE]' }
     ];
+
+    const now = serverTime || new Date().getTime();
 
     rooms.forEach(r => {
       const b = statuses[r.key] || {
@@ -106,7 +108,9 @@ const AdminApp = {
         difficulty: 'normal',
         currentQuestionId: '',
         timeLeft: 0,
-        lowBattery: false
+        lowBattery: false,
+        isOnline: false,
+        updatedAt: null
       };
 
       const card = document.getElementById(`monitor-card-${r.key}`);
@@ -115,11 +119,29 @@ const AdminApp = {
       const diffElem = document.getElementById(`monitor-diff-${r.key}`);
       const timerElem = document.getElementById(`monitor-timer-${r.key}`);
       const batteryAlert = document.getElementById(`battery-${r.key}`);
+      const onlineBadge = document.getElementById(`monitor-online-${r.key}`);
 
       if (!card) return;
 
       // カードのアクティブ枠線制御
       card.className = `monitor-card card-state-${b.status}`;
+
+      // オンライン／オフライン判定表示 (20秒以内に通信があるか)
+      if (onlineBadge) {
+        let isDeviceOnline = b.isOnline;
+        if (b.updatedAt) {
+          const diffMs = now - new Date(b.updatedAt).getTime();
+          isDeviceOnline = diffMs >= 0 && diffMs <= 20000;
+        }
+
+        if (isDeviceOnline) {
+          onlineBadge.className = 'monitor-online-badge online font-cyber';
+          onlineBadge.innerHTML = '<span class="online-dot-icon"></span> ONLINE';
+        } else {
+          onlineBadge.className = 'monitor-online-badge offline font-cyber';
+          onlineBadge.innerHTML = '<span class="online-dot-icon"></span> OFFLINE';
+        }
+      }
 
       if (batteryAlert) {
         batteryAlert.classList.toggle('hidden', !b.lowBattery);
@@ -149,12 +171,13 @@ const AdminApp = {
       }
 
       if (diffElem) {
-        diffElem.textContent = b.groupId ? b.difficulty.toUpperCase() : '--';
+        diffElem.textContent = b.groupId ? String(b.difficulty).toUpperCase() : '--';
       }
 
       if (timerElem) {
         if (b.status === 'playing') {
-          timerElem.textContent = `${b.timeLeft} 秒`;
+          const safeTime = Math.max(0, Math.floor(Number(b.timeLeft) || 0));
+          timerElem.textContent = `${safeTime} 秒`;
         } else if (b.status === 'ready') {
           timerElem.textContent = '30 秒準備中';
         } else {

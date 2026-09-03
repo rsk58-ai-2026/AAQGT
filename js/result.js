@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * result.js - 出口／リザルト機（独立保留キュー式）
+ * result.js - 出口／リザルト機（独立保留キュー式・負数防止ガード適用）
  */
 const ResultApp = {
   pollingTimer: null,
@@ -60,10 +60,12 @@ const ResultApp = {
   async toggleBatteryAlert() {
     this.isLowBattery = !this.isLowBattery;
     const btn = document.getElementById('btn-battery-result');
-    btn.classList.toggle('active', this.isLowBattery);
-    btn.innerHTML = this.isLowBattery
-      ? '<span class="material-symbols-outlined icon-sm">battery_alert</span> 給電要請'
-      : '<span class="material-symbols-outlined icon-sm">battery_alert</span> バッテリー';
+    if (btn) {
+      btn.classList.toggle('active', this.isLowBattery);
+      btn.innerHTML = this.isLowBattery
+        ? '<span class="material-symbols-outlined icon-sm">battery_alert</span> 給電要請'
+        : '<span class="material-symbols-outlined icon-sm">battery_alert</span> バッテリー';
+    }
     await API.reportLowBattery('exit', this.isLowBattery);
   },
 
@@ -139,10 +141,10 @@ const ResultApp = {
 
     // スコア・統計表示
     const scoreVal = document.getElementById('result-total-score');
-    if (scoreVal) scoreVal.textContent = data.totalScore;
+    if (scoreVal) scoreVal.textContent = Math.max(0, Math.floor(Number(data.totalScore) || 0));
 
     const missVal = document.getElementById('result-total-misses');
-    if (missVal) missVal.textContent = data.totalMisses;
+    if (missVal) missVal.textContent = Math.max(0, Math.floor(Number(data.totalMisses) || 0));
 
     // パーフェクトボーナス獲得判定 (全問正解)
     const isPerfect = data.q1.isCorrect && data.q2.isCorrect && data.q3.isCorrect;
@@ -179,9 +181,13 @@ const ResultApp = {
       const isCorrect = q.info.isCorrect;
       card.className = `result-question-card ${isCorrect ? 'is-correct' : 'is-wrong'}`;
 
+      // 残り時間・誤答数の負数・不正値ガード
+      const safeTimeLeft = Math.max(0, Math.floor(Number(q.info.timeLeft) || 0));
+      const safeMissCount = Math.max(0, Math.floor(Number(q.info.missCount) || 0));
+
       card.innerHTML = `
         <div class="result-card-header">
-          <span class="result-q-title">第${q.num}問 (${q.info.difficulty.toUpperCase()})</span>
+          <span class="result-q-title">第${q.num}問 (${String(q.info.difficulty).toUpperCase()})</span>
           <span class="result-judge-badge ${isCorrect ? 'badge-correct' : 'badge-wrong'}">
             <span class="material-symbols-outlined icon-xs">${isCorrect ? 'check_circle' : 'cancel'}</span>
             ${isCorrect ? '正解 [クリア]' : '不正解 [突破失敗]'}
@@ -191,8 +197,8 @@ const ResultApp = {
           <p class="result-q-answer">模範解答: <span class="text-highlight font-bold">${q.info.answer || '--'}</span></p>
           ${q.info.explanation ? `<p class="result-q-exp">${q.info.explanation}</p>` : ''}
           <div class="result-q-stats-row">
-            <span>残り時間: <strong class="font-mono">${q.info.timeLeft || 0}秒</strong></span>
-            <span>誤答ペナルティ: <strong class="text-warning font-mono">${q.info.missCount || 0}回</strong></span>
+            <span>残り時間: <strong class="font-mono">${safeTimeLeft}秒</strong></span>
+            <span>誤答ペナルティ: <strong class="text-warning font-mono">${safeMissCount}回</strong></span>
           </div>
         </div>
       `;

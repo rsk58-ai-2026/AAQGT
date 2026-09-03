@@ -221,19 +221,37 @@ const QuizApp = {
   },
 
   // ==========================================
-  // Room 1 固有ステートマシン
+  // Room 1 固有ステートマシン (前室攻略中待機連動)
   // ==========================================
 
   syncStateRoom1(myData, allStatuses) {
     const serverStatus = myData.status;
 
-    // Room2が攻略中(playing)になったら、自身は初期画面(idle)へリセット
+    // Room 1 が answered 状態の時: Room 2の状況を監視
     if (this.currentState === 'answered') {
-      const room2Status = allStatuses.room2 ? allStatuses.room2.status : 'idle';
-      if (room2Status === 'playing') {
+      const room2 = allStatuses.room2 || {};
+      const room2Status = room2.status || 'idle';
+      const room2Group = room2.groupId || '';
+
+      // Room 2が自グループでplayingになったら、客が移動完了したためRoom 1をidleへリセット
+      if (room2Status === 'playing' && room2Group === this.currentGroupId) {
         this.currentGroupId = null;
         this.renderState('idle');
         return;
+      }
+
+      const waitNotice = document.getElementById('quiz-view-answered-wait');
+      const moveNotice = document.getElementById('quiz-view-answered-move');
+      const waitTarget = document.getElementById('answered-wait-target-node');
+      if (waitTarget) waitTarget.textContent = 'NODE 2 [BETA]';
+
+      // Room 2が他のお客様で攻略中の場合は待機画面、そうでなければ進行案内
+      if (room2Status === 'playing' && room2Group !== this.currentGroupId) {
+        if (waitNotice) waitNotice.classList.remove('hidden');
+        if (moveNotice) moveNotice.classList.add('hidden');
+      } else {
+        if (waitNotice) waitNotice.classList.add('hidden');
+        if (moveNotice) moveNotice.classList.remove('hidden');
       }
     }
 
@@ -397,19 +415,23 @@ const QuizApp = {
 
     // 3. Answered状態: Room3の状態を監視して案内表示を切り替え
     if (this.currentState === 'answered') {
-      const room3Status = allStatuses.room3 ? allStatuses.room3.status : 'idle';
+      const room3 = allStatuses.room3 || {};
+      const room3Status = room3.status || 'idle';
+      const room3Group = room3.groupId || '';
 
-      // Room3がすでに攻略中(playing)になったら自身はリセット
-      if (room3Status === 'playing') {
+      // Room 3が自グループで攻略中(playing)になったら、自身はidleへリセット
+      if (room3Status === 'playing' && room3Group === this.currentGroupId) {
         this.currentGroupId = null;
         this.renderState('idle');
         return;
       }
 
-      // Room3が攻略中なら待機案内、それ以外なら進行案内
       const waitNotice = document.getElementById('quiz-view-answered-wait');
       const moveNotice = document.getElementById('quiz-view-answered-move');
-      if (room3Status === 'playing') {
+      const waitTarget = document.getElementById('answered-wait-target-node');
+      if (waitTarget) waitTarget.textContent = 'NODE 3 [CORE]';
+
+      if (room3Status === 'playing' && room3Group !== this.currentGroupId) {
         if (waitNotice) waitNotice.classList.remove('hidden');
         if (moveNotice) moveNotice.classList.add('hidden');
       } else {
@@ -446,7 +468,7 @@ const QuizApp = {
   },
 
   // ==========================================
-  // Room 3 解答後 30秒自動スタンバイ復帰タイマー処理
+  // Room 3 解答後 30秒自動スタンバイ復帰 & 手動復帰処理
   // ==========================================
 
   startRoom3AutoResetCountdown() {
@@ -460,7 +482,6 @@ const QuizApp = {
     if (timerElem) timerElem.textContent = this.room3AutoResetTimeLeft;
 
     this.room3AutoResetTimer = setInterval(async () => {
-      // 一時停止中はカウントを停止
       if (this.isEmergencyPaused || this.isInfoPaused) return;
 
       this.room3AutoResetTimeLeft--;
@@ -490,6 +511,21 @@ const QuizApp = {
     }
     const noticeElem = document.getElementById('room3-auto-reset-notice');
     if (noticeElem) noticeElem.classList.add('hidden');
+  },
+
+  /**
+   * Room 3: 手動で即座に待機画面（idle）へ戻す処理
+   */
+  async handleRoom3ManualReset() {
+    this.stopRoom3AutoResetCountdown();
+    this.currentGroupId = null;
+    this.renderState('idle');
+
+    try {
+      await API.updateRoomStatus(this.roomKey, 'idle');
+    } catch (e) {
+      console.warn('Room3 manual reset status update error:', e);
+    }
   },
 
   // ==========================================
@@ -586,7 +622,7 @@ const QuizApp = {
 
     this.renderQuestionData();
 
-    this.timeLeft = customTime;
+    this.timeLeft = Math.max(0, Math.floor(Number(customTime) || 60));
     this.startTimer();
   },
 
@@ -705,15 +741,16 @@ const QuizApp = {
   },
 
   updateTimerDisplay() {
-    const min = Math.floor(Math.max(0, this.timeLeft) / 60);
-    const sec = Math.max(0, this.timeLeft) % 60;
+    const safeTime = Math.max(0, Math.floor(Number(this.timeLeft) || 0));
+    const min = Math.floor(safeTime / 60);
+    const sec = safeTime % 60;
     const formatted = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 
     const timerElem = document.getElementById('quiz-timer');
     const timerBox = document.getElementById('timer-box');
     if (timerElem) timerElem.textContent = formatted;
 
-    if (this.timeLeft <= 15 && timerBox) {
+    if (safeTime <= 15 && timerBox) {
       timerBox.classList.add('timer-warning');
     } else if (timerBox) {
       timerBox.classList.remove('timer-warning');
@@ -732,13 +769,14 @@ const QuizApp = {
   },
 
   async autoSubmitOnTimeUp() {
+    const safeTime = 0; // 時間切れのため確実に0
     const payload = {
       groupId: this.currentGroupId,
       roomNumber: this.roomNumber,
       difficulty: this.currentDifficulty,
       questionId: this.currentQuestion ? this.currentQuestion.id : 'TIMEUP',
       isCorrect: false,
-      timeLeft: 0,
+      timeLeft: safeTime,
       missCount: this.missCount
     };
 
@@ -766,7 +804,7 @@ const QuizApp = {
     }
 
     answer.textContent = this.currentQuestion ? (this.currentQuestion.answer || '--') : '--';
-    time.textContent = Math.max(0, this.timeLeft);
+    time.textContent = Math.max(0, Math.floor(Number(this.timeLeft) || 0));
     if (miss) miss.textContent = this.missCount;
 
     modal.classList.remove('hidden');
@@ -795,13 +833,16 @@ const QuizApp = {
       }
     }
 
+    // 残り秒数を0以上の整数に補正して負数バグを完全防止
+    const safeTimeLeft = Math.max(0, Math.floor(Number(this.timeLeft) || 0));
+
     const payload = {
       groupId: this.currentGroupId,
       roomNumber: this.roomNumber,
       difficulty: this.currentDifficulty,
       questionId: this.currentQuestion ? this.currentQuestion.id : '',
       isCorrect: isCorrect,
-      timeLeft: Math.max(0, this.timeLeft),
+      timeLeft: safeTimeLeft,
       missCount: this.missCount
     };
 
@@ -827,7 +868,6 @@ const QuizApp = {
   renderState(state) {
     this.currentState = state;
 
-    // answered 以外に遷移した場合は Room 3 の自動リセットタイマーを停止
     if (state !== 'answered') {
       this.stopRoom3AutoResetCountdown();
     }
@@ -877,17 +917,23 @@ const QuizApp = {
   renderAnsweredViewDetails() {
     const waitNotice = document.getElementById('quiz-view-answered-wait');
     const moveNotice = document.getElementById('quiz-view-answered-move');
+    const waitTarget = document.getElementById('answered-wait-target-node');
+    const room3ManualBox = document.getElementById('room3-manual-reset-box');
+
+    if (room3ManualBox) room3ManualBox.classList.add('hidden');
 
     if (this.roomKey === 'room1') {
+      if (waitTarget) waitTarget.textContent = 'NODE 2 [BETA]';
       if (waitNotice) waitNotice.classList.add('hidden');
       if (moveNotice) moveNotice.classList.remove('hidden');
     } else if (this.roomKey === 'room2') {
+      if (waitTarget) waitTarget.textContent = 'NODE 3 [CORE]';
       if (waitNotice) waitNotice.classList.add('hidden');
       if (moveNotice) moveNotice.classList.remove('hidden');
     } else if (this.roomKey === 'room3') {
-      // Room 3 は即座に進行案内を表示し、30秒自動スタンバイ復帰タイマーを開始
       if (waitNotice) waitNotice.classList.add('hidden');
       if (moveNotice) moveNotice.classList.remove('hidden');
+      if (room3ManualBox) room3ManualBox.classList.remove('hidden');
       this.startRoom3AutoResetCountdown();
     }
   },

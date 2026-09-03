@@ -1,6 +1,6 @@
 /* ==========================================================================
    PROJECT AI 〜人類最後のアップデートが始まる〜
-   Official Styling & Cyber Theme (style.css)
+   Official Styling & Cyber Theme (style.css) - 完全版
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -108,7 +108,7 @@ html, body {
 
 /* ==========================================================================
    CSSレベルでのロール別画面強制分離（多重防御ガード）
-   JSの遅延や初期ロード時のチラつき・誤表示を完全に遮断
+   ※Room 1 でも前室攻略中待機（#quiz-view-answered-wait）を表示可能
    ========================================================================== */
 body[data-role="room2"] #quiz-view-room1-start,
 body[data-role="room3"] #quiz-view-room1-start,
@@ -118,8 +118,7 @@ body[data-role="room3"] #quiz-view-select-diff {
 }
 
 body[data-role="room1"] #quiz-view-glitch-standby,
-body[data-role="room1"] #quiz-view-ready,
-body[data-role="room1"] #quiz-view-answered-wait {
+body[data-role="room1"] #quiz-view-ready {
   display: none !important;
 }
 
@@ -569,6 +568,49 @@ body[data-role="room3"] #quiz-view-answered-wait {
   font-weight: 700;
   color: #94a3b8;
 }
+
+/* オンライン / オフライン バッジ */
+.monitor-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.monitor-online-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.monitor-online-badge.online {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--signal-green);
+  border: 1px solid var(--signal-green);
+}
+.monitor-online-badge.offline {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--signal-red);
+  border: 1px solid var(--signal-red);
+}
+
+.online-dot-icon {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.monitor-online-badge.online .online-dot-icon {
+  background: var(--signal-green);
+  box-shadow: 0 0 6px var(--signal-green);
+}
+.monitor-online-badge.offline .online-dot-icon {
+  background: var(--signal-red);
+  box-shadow: 0 0 6px var(--signal-red);
+}
+
 .monitor-group-display {
   font-size: 24px;
   font-weight: 900;
@@ -997,7 +1039,107 @@ body[data-role="room3"] #quiz-view-answered-wait {
 }
 
 /* --------------------------------------------------------------------------
-   8. 問題機：Room 2 / Room 3 準備カウントダウン（赤色7セグメントLED）
+   8. スタートボタン即時フィードバック・ローディング・起動フラッシュ演出
+   -------------------------------------------------------------------------- */
+/* 高速同期スピナー回転アニメーション */
+.icon-spin {
+  display: inline-block;
+  animation: spin-sync 0.65s linear infinite !important;
+}
+@keyframes spin-sync {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Room 1 巨大スタートボタン: 押下ローディング状態 */
+.btn-giant-start.is-loading {
+  transform: scale(0.95) !important;
+  background: radial-gradient(circle at 50% 50%, #0284c7, #082f49 65%, #050813 100%) !important;
+  border-color: #ffffff !important;
+  box-shadow:
+    0 0 45px var(--neon-cyan),
+    0 0 80px rgba(0, 240, 255, 0.8),
+    inset 0 0 45px #00f0ff !important;
+  cursor: wait !important;
+  animation: giant-core-burst 0.7s infinite alternate ease-in-out !important;
+}
+
+.btn-giant-start.is-loading::before {
+  border-color: #ffffff !important;
+  border-style: solid !important;
+  animation: rotate-ring 1.5s linear infinite !important;
+}
+
+.btn-giant-start.is-loading .giant-start-icon {
+  color: #ffffff !important;
+  text-shadow: 0 0 20px #00f0ff;
+}
+
+.btn-giant-start.is-loading .giant-start-text {
+  color: #ffffff !important;
+  text-shadow: 0 0 16px #00f0ff;
+  letter-spacing: 3px;
+  animation: text-pulse-blink 0.6s infinite alternate ease-in-out;
+}
+
+@keyframes giant-core-burst {
+  0% {
+    box-shadow:
+      0 0 35px var(--neon-cyan),
+      0 0 60px rgba(0, 240, 255, 0.6),
+      inset 0 0 30px #00f0ff;
+  }
+  100% {
+    box-shadow:
+      0 0 60px #ffffff,
+      0 0 100px var(--neon-cyan),
+      inset 0 0 60px #ffffff;
+  }
+}
+
+@keyframes text-pulse-blink {
+  0% { opacity: 0.55; transform: scale(0.96); }
+  100% { opacity: 1; transform: scale(1.04); }
+}
+
+/* 難易度決定 & Room 2/3 開始ボタンのローディング状態 */
+.btn-confirm-diff.is-loading,
+.btn-ready-start.is-loading {
+  cursor: wait !important;
+  opacity: 0.95;
+  border-color: #ffffff !important;
+  box-shadow:
+    0 0 25px var(--neon-cyan),
+    0 0 45px rgba(0, 240, 255, 0.7) !important;
+  animation: pulse-ready 0.8s infinite !important;
+}
+
+/* 画面全体のサイバーバースト（起動フラッシュ演出） */
+body.cyber-burst-active::after {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(0, 240, 255, 0.5) 0%, rgba(255, 255, 255, 0.35) 40%, transparent 80%);
+  pointer-events: none;
+  z-index: 99999;
+  animation: cyber-burst-fade 0.45s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+}
+
+@keyframes cyber-burst-fade {
+  0% {
+    opacity: 1;
+    transform: scale(0.95);
+    filter: brightness(2);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.08);
+    filter: brightness(1);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   9. 問題機：Room 2 / Room 3 準備カウントダウン（赤色7セグメントLED）
    -------------------------------------------------------------------------- */
 .countdown-ready-card {
   max-width: 620px;
@@ -1076,7 +1218,7 @@ body[data-role="room3"] #quiz-view-answered-wait {
 }
 
 /* --------------------------------------------------------------------------
-   9. アイドル時のフルスクリーン・サイバーグリッチ演出 (Room 2/3)
+   10. アイドル時のフルスクリーン・サイバーグリッチ演出 (Room 2/3)
    -------------------------------------------------------------------------- */
 .glitch-standby-wrapper {
   position: relative;
@@ -1133,7 +1275,7 @@ body[data-role="room3"] #quiz-view-answered-wait {
 }
 
 /* --------------------------------------------------------------------------
-   10. クイズ出題・攻略画面 (Playing)
+   11. クイズ出題・攻略画面 (Playing)
    -------------------------------------------------------------------------- */
 .quiz-header {
   display: flex;
@@ -1359,7 +1501,7 @@ body[data-role="room3"] #quiz-view-answered-wait {
 .effect-subtitle { font-size: 18px; color: #e2e8f0; margin-top: 6px; }
 
 /* --------------------------------------------------------------------------
-   11. 解答後待機 & 移動案内画面 (Answered)
+   12. 解答後待機 & 移動案内画面 (Answered)
    -------------------------------------------------------------------------- */
 .waiting-card {
   text-align: center;
@@ -1371,7 +1513,7 @@ body[data-role="room3"] #quiz-view-answered-wait {
 .waiting-title { font-size: 28px; margin-bottom: 12px; }
 .waiting-subtitle { color: #94a3b8; font-size: 15px; max-width: 500px; margin: 0 auto; line-height: 1.6; }
 
-/* Room 2 専用：警告ストライプ待機フレーム */
+/* 警告ストライプ待機フレーム (Room 1 & Room 2 前室攻略中待機) */
 .waiting-card.cyber-border-warning {
   background:
     repeating-linear-gradient(
@@ -1411,8 +1553,46 @@ body[data-role="room3"] #quiz-view-answered-wait {
   animation: pulse-ready 1.5s infinite;
 }
 
+/* Room 3 解答後 自動スタンバイ復帰カウントダウン通知 */
+.auto-reset-notice {
+  margin-top: 24px;
+  font-size: 14px;
+  color: #94a3b8;
+  background: rgba(5, 8, 19, 0.75);
+  padding: 8px 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  display: inline-block;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+  animation: fadeIn 0.4s ease;
+}
+
+.auto-reset-notice strong,
+.auto-reset-notice span {
+  font-size: 18px;
+  color: #fbbf24;
+}
+
+/* Room 3専用: 手動待機復帰ボタンボックス */
+.room3-manual-reset-box {
+  margin-top: 18px;
+  display: flex;
+  justify-content: center;
+}
+#btn-room3-manual-reset {
+  min-height: 42px;
+  padding: 8px 18px;
+  border-color: rgba(0, 240, 255, 0.4);
+  background: rgba(5, 8, 19, 0.8);
+  color: var(--neon-cyan);
+}
+#btn-room3-manual-reset:hover {
+  background: rgba(0, 240, 255, 0.2);
+  box-shadow: 0 0 15px var(--neon-cyan-glow);
+}
+
 /* --------------------------------------------------------------------------
-   12. 出口機 [TERMINAL]（保留キュー式リザルト）
+   13. 出口機 [TERMINAL]（保留キュー式リザルト）
    -------------------------------------------------------------------------- */
 .result-header {
   display: flex;
@@ -1610,7 +1790,7 @@ body[data-role="room3"] #quiz-view-answered-wait {
 }
 
 /* --------------------------------------------------------------------------
-   13. モーダル群 (マニュアル & 判定 & メディア)
+   14. モーダル群 (マニュアル & 判定 & メディア)
    -------------------------------------------------------------------------- */
 .modal-overlay {
   position: fixed;
@@ -1673,7 +1853,23 @@ body[data-role="room3"] #quiz-view-answered-wait {
 .step-num { font-size: 13px; background: #0284c7; color: #fff; padding: 2px 6px; border-radius: 4px; }
 .flow-text { font-size: 14px; line-height: 1.7; color: #cbd5e1; }
 
-.db-filter-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+/* 問題カンニングDB: フィルタ＆ソートコントロールバー */
+.db-control-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  background: rgba(5, 8, 19, 0.6);
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+}
+.db-control-container .db-filter-bar {
+  margin-bottom: 0;
+}
+.db-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; }
 .db-filter-chip {
   min-height: 38px;
   padding: 6px 14px;
@@ -1686,6 +1882,34 @@ body[data-role="room3"] #quiz-view-answered-wait {
   font-size: 13px;
 }
 .db-filter-chip.active { background: var(--neon-cyan); color: #000; font-weight: 700; }
+
+.db-sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.db-sort-bar .sort-label {
+  font-size: 13px;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.db-sort-select {
+  min-height: 38px;
+  padding: 4px 10px;
+  font-size: 13px;
+  background: #0d162b;
+  border: 1px solid var(--neon-cyan);
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.db-sort-select:focus {
+  outline: none;
+  box-shadow: 0 0 10px var(--neon-cyan-glow);
+}
+
 .db-cards-container { display: flex; flex-direction: column; gap: 12px; }
 .manual-db-card { background: rgba(5, 8, 19, 0.85); border: 1px solid #334155; border-radius: 8px; padding: 14px; }
 .db-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -1796,7 +2020,7 @@ body[data-role="room3"] #quiz-view-answered-wait {
 }
 
 /* --------------------------------------------------------------------------
-   14. アニメーション定義
+   15. アニメーション定義
    -------------------------------------------------------------------------- */
 @keyframes pulse {
   0%, 100% { transform: scale(1); }
@@ -1822,127 +2046,4 @@ body[data-role="room3"] #quiz-view-answered-wait {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-/* ==========================================================================
-   UI/UX改善: スタートボタン即時フィードバック・ローディング・起動フラッシュ演出
-   ========================================================================== */
-
-/* 1. 高速同期スピナー回転アニメーション */
-.icon-spin {
-  display: inline-block;
-  animation: spin-sync 0.65s linear infinite !important;
-}
-@keyframes spin-sync {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* 2. Room 1 巨大スタートボタン: 押下ローディング状態 */
-.btn-giant-start.is-loading {
-  transform: scale(0.95) !important;
-  background: radial-gradient(circle at 50% 50%, #0284c7, #082f49 65%, #050813 100%) !important;
-  border-color: #ffffff !important;
-  box-shadow:
-    0 0 45px var(--neon-cyan),
-    0 0 80px rgba(0, 240, 255, 0.8),
-    inset 0 0 45px #00f0ff !important;
-  cursor: wait !important;
-  animation: giant-core-burst 0.7s infinite alternate ease-in-out !important;
-}
-
-.btn-giant-start.is-loading::before {
-  border-color: #ffffff !important;
-  border-style: solid !important;
-  animation: rotate-ring 1.5s linear infinite !important;
-}
-
-.btn-giant-start.is-loading .giant-start-icon {
-  color: #ffffff !important;
-  text-shadow: 0 0 20px #00f0ff;
-}
-
-.btn-giant-start.is-loading .giant-start-text {
-  color: #ffffff !important;
-  text-shadow: 0 0 16px #00f0ff;
-  letter-spacing: 3px;
-  animation: text-pulse-blink 0.6s infinite alternate ease-in-out;
-}
-
-@keyframes giant-core-burst {
-  0% {
-    box-shadow:
-      0 0 35px var(--neon-cyan),
-      0 0 60px rgba(0, 240, 255, 0.6),
-      inset 0 0 30px #00f0ff;
-  }
-  100% {
-    box-shadow:
-      0 0 60px #ffffff,
-      0 0 100px var(--neon-cyan),
-      inset 0 0 60px #ffffff;
-  }
-}
-
-@keyframes text-pulse-blink {
-  0% { opacity: 0.55; transform: scale(0.96); }
-  100% { opacity: 1; transform: scale(1.04); }
-}
-
-/* 3. 難易度決定 & Room 2/3 開始ボタンのローディング状態 */
-.btn-confirm-diff.is-loading,
-.btn-ready-start.is-loading {
-  cursor: wait !important;
-  opacity: 0.95;
-  border-color: #ffffff !important;
-  box-shadow:
-    0 0 25px var(--neon-cyan),
-    0 0 45px rgba(0, 240, 255, 0.7) !important;
-  animation: pulse-ready 0.8s infinite !important;
-}
-
-/* 4. 画面全体のサイバーバースト（起動フラッシュ演出） */
-body.cyber-burst-active::after {
-  content: '';
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: radial-gradient(circle at 50% 50%, rgba(0, 240, 255, 0.5) 0%, rgba(255, 255, 255, 0.35) 40%, transparent 80%);
-  pointer-events: none;
-  z-index: 99999;
-  animation: cyber-burst-fade 0.45s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
-}
-
-@keyframes cyber-burst-fade {
-  0% {
-    opacity: 1;
-    transform: scale(0.95);
-    filter: brightness(2);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.08);
-    filter: brightness(1);
-  }
-}
-
-/* ==========================================================================
-   Room 3 解答後 自動スタンバイ復帰カウントダウン通知
-   ========================================================================== */
-.auto-reset-notice {
-  margin-top: 24px;
-  font-size: 14px;
-  color: #94a3b8;
-  background: rgba(5, 8, 19, 0.75);
-  padding: 8px 20px;
-  border-radius: 20px;
-  border: 1px solid rgba(0, 240, 255, 0.3);
-  display: inline-block;
-  box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
-  animation: fadeIn 0.4s ease;
-}
-
-.auto-reset-notice strong,
-.auto-reset-notice span {
-  font-size: 18px;
-  color: #fbbf24;
 }
