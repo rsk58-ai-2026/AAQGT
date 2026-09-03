@@ -234,11 +234,33 @@ const QuizApp = {
   },
 
   /**
-   * Room 1: STARTボタン押下時
+   * Room 1: STARTボタン押下時（即時フィードバック機能付き）
    */
   async handleRoom1Start() {
     const btn = document.getElementById('btn-room1-start');
-    if (btn) btn.disabled = true;
+    const startWrapper = document.getElementById('idle-room1-content');
+
+    // 即座にボタンの見た目をローディング中・発光状態に切り替え
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-loading');
+      const textElem = btn.querySelector('.giant-start-text');
+      const iconElem = btn.querySelector('.giant-start-icon');
+      if (textElem) textElem.textContent = 'CONNECTING...';
+      if (iconElem) {
+        iconElem.textContent = 'sync';
+        iconElem.classList.add('anim-spin');
+      }
+    }
+
+    // 画面全体のバースト発光演出
+    if (startWrapper) {
+      startWrapper.classList.add('effect-startup-burst');
+    }
+
+    // 即座に電子音を再生（ピッ！ピロリン！）
+    this.playAudioTone(440, 0.08, 'sine');
+    setTimeout(() => this.playAudioTone(880, 0.2, 'triangle'), 90);
 
     try {
       const res = await API.startRoom1();
@@ -250,16 +272,34 @@ const QuizApp = {
         const exBtn = document.getElementById('btn-symbol-ex');
         if (exBtn) exBtn.classList.add('hidden');
 
+        // 成功音
+        this.playAudioTone(1050, 0.15, 'sine');
+
         // 難易度選択ステートへ遷移
         this.renderState('select-diff');
         this.startDifficultySelectTimer();
       } else {
         alert(res.error || '開始処理に失敗しました');
+        this.renderState('idle');
       }
     } catch (e) {
       alert('通信エラーが発生しました。再度お試しください。');
+      this.renderState('idle');
     } finally {
-      if (btn) btn.disabled = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('is-loading');
+        const textElem = btn.querySelector('.giant-start-text');
+        const iconElem = btn.querySelector('.giant-start-icon');
+        if (textElem) textElem.textContent = 'MISSION START';
+        if (iconElem) {
+          iconElem.textContent = 'power_settings_new';
+          iconElem.classList.remove('anim-spin');
+        }
+      }
+      if (startWrapper) {
+        startWrapper.classList.remove('effect-startup-burst');
+      }
     }
   },
 
@@ -293,6 +333,14 @@ const QuizApp = {
     this.stopReadyTimer();
     this.currentDifficulty = diffSymbol;
 
+    // 決定ボタンの即座ローディング表示
+    const confirmBtn = document.getElementById('btn-confirm-diff');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.innerHTML = '<span class="material-symbols-outlined icon-md anim-spin">sync</span> 展開中 (DEPLOYING...)';
+    }
+    this.playAudioTone(660, 0.15, 'sine');
+
     // 問題選定
     let candidates = this.cachedQuestions.filter(q => q.difficulty === diffSymbol);
     if (diffSymbol === 'ex' && candidates.length === 0) {
@@ -304,6 +352,10 @@ const QuizApp = {
 
     if (candidates.length === 0) {
       alert(`該当する問題データが存在しません [${diffSymbol}]`);
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = '<span class="material-symbols-outlined icon-md">play_arrow</span> 決定して開始';
+      }
       this.renderState('idle');
       return;
     }
@@ -316,6 +368,11 @@ const QuizApp = {
     } catch (e) {
       alert('難易度確定の通信に失敗しました。');
       this.renderState('idle');
+    } finally {
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = '<span class="material-symbols-outlined icon-md">play_arrow</span> 決定して開始';
+      }
     }
   },
 
@@ -430,6 +487,15 @@ const QuizApp = {
   async confirmStartPlaying(customTimeLimit) {
     this.stopReadyTimer();
 
+    // 開始ボタンの即座ローディング表示
+    const readyBtn = document.querySelector('.btn-ready-start');
+    if (readyBtn) {
+      readyBtn.disabled = true;
+      readyBtn.innerHTML = '<span class="material-symbols-outlined icon-lg anim-spin">sync</span> 起動プロトコル実行中...';
+      readyBtn.classList.add('is-loading');
+    }
+    this.playAudioTone(520, 0.15, 'triangle');
+
     // 出題問題の選定
     let candidates = this.cachedQuestions.filter(q => q.difficulty === this.currentDifficulty);
     if (candidates.length === 0) {
@@ -437,6 +503,11 @@ const QuizApp = {
     }
     if (candidates.length === 0) {
       alert('出題可能な問題データが見つかりません');
+      if (readyBtn) {
+        readyBtn.disabled = false;
+        readyBtn.innerHTML = '<span class="material-symbols-outlined icon-lg">play_circle</span> 開始 (START)';
+        readyBtn.classList.remove('is-loading');
+      }
       this.renderState('idle');
       return;
     }
@@ -448,6 +519,11 @@ const QuizApp = {
       this.startPlay(customTimeLimit);
     } catch (e) {
       alert('攻略開始の同期に失敗しました。');
+      if (readyBtn) {
+        readyBtn.disabled = false;
+        readyBtn.innerHTML = '<span class="material-symbols-outlined icon-lg">play_circle</span> 開始 (START)';
+        readyBtn.classList.remove('is-loading');
+      }
     }
   },
 
@@ -784,7 +860,7 @@ const QuizApp = {
       const gain = ctx.createGain();
       osc.type = type;
       osc.frequency.setValueAtTime(freq, ctx.currentTime);
-      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
       osc.connect(gain);
       gain.connect(ctx.destination);
