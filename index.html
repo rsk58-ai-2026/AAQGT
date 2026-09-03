@@ -91,7 +91,6 @@
               ・お客様が来たら「グループID」と「難易度」を指定。<br>
               ・全ブース（Room 1〜3）が<strong>READY（待機中）</strong>になると「全ブースを一斉進行」ボタンが点灯。<br>
               ・ボタンを押すと、各部屋のお客様が1つ先の部屋へ進み、新規グループが第1問に入室します。<br>
-              <strong class="text-warning">※出口機はパイプラインから独立しているため、出口の案内状態に関係なく進行可能です。</strong>
             </p>
           </div>
 
@@ -243,7 +242,6 @@
       <section class="section-card">
         <div class="section-header-flex">
           <h2 class="section-title">AI防壁稼働ステータス</h2>
-          <span class="section-note">※Room 1〜3がReadyになると一斉進行が点灯します（出口は独立稼働）</span>
         </div>
         <div class="pipeline-grid">
           <div id="card-room1" class="room-card status-unknown">
@@ -291,12 +289,12 @@
               <input type="text" id="next-group-id" class="form-input font-mono" value="G-01">
             </div>
             <div class="form-group">
-              <label class="form-label">難易度指定（プロトコル強度）</label>
+              <label class="form-label">難易度指定</label>
               <div class="diff-selector">
-                <label><input type="radio" name="admin-diff" value="easy"> かんたん (10pt)</label>
-                <label><input type="radio" name="admin-diff" value="normal" checked> ふつう (20pt)</label>
-                <label><input type="radio" name="admin-diff" value="hard"> むずかしい (30pt)</label>
-                <label><input type="radio" name="admin-diff" value="ex" class="radio-ex"> EXモード (40pt)</label>
+                <label><input type="radio" name="admin-diff" value="easy"> かんたん</label>
+                <label><input type="radio" name="admin-diff" value="normal" checked> ふつう</label>
+                <label><input type="radio" name="admin-diff" value="hard"> むずかしい)</label>
+                <label><input type="radio" name="admin-diff" value="ex" class="radio-ex"> EXモード(合言葉確認必須)</label>
               </div>
             </div>
           </div>
