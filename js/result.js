@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * result.js - 出口／リザルト機（独立保留トレイ・解説画像拡大・総合ランキングボード完全対応）
+ * result.js - 出口／リザルト機（保留トレイ新着左配置・解説画像拡大・総合ランキングボード完全対応）
  */
 const ResultApp = {
   pollingTimer: null,
@@ -108,7 +108,7 @@ const ResultApp = {
       header.parentNode.insertBefore(tabNav, header.nextSibling);
     }
 
-    // ランキング用ビューコンテナの動的作成（なければ生成）
+    // ランキング用ビューコンテナの動的作成
     let rankingView = document.getElementById('result-view-ranking');
     if (!rankingView) {
       rankingView = document.createElement('div');
@@ -225,6 +225,9 @@ const ResultApp = {
     }
   },
 
+  /**
+   * 保留トレイの描画（※新着グループが一番左に来るように配列を逆順にして描画）
+   */
   renderQueueRack() {
     const rack = document.getElementById('pending-queue-rack');
     const badgeCount = document.getElementById('pending-count-badge');
@@ -241,7 +244,10 @@ const ResultApp = {
       return;
     }
 
-    this.pendingList.forEach(item => {
+    // ★★★ 新しいグループが左（先頭）に来るように配列を反転 ★★★
+    const displayList = [...this.pendingList].reverse();
+
+    displayList.forEach(item => {
       const card = document.createElement('button');
       card.className = `queue-chip ${this.activeGroupId === item.groupId ? 'active' : ''}`;
       card.innerHTML = `
@@ -359,7 +365,6 @@ const ResultApp = {
           </div>
         `;
 
-        // メディアのタップ全画面拡大イベント登録
         if (mediaUrl) {
           const thumbElem = card.querySelector('.result-media-thumb');
           if (thumbElem) {
@@ -374,7 +379,6 @@ const ResultApp = {
       });
     }
 
-    // 案内完了・退室ボタンを非表示化（チップ切り替え運用に完全移行）
     const finishBtn = document.getElementById('btn-finish-result');
     if (finishBtn) finishBtn.classList.add('hidden');
 
@@ -412,7 +416,6 @@ const ResultApp = {
       const row = document.createElement('div');
       row.className = `ranking-item-row ${item.rank <= 3 ? `top-${item.rank}` : ''}`;
 
-      // 順位バッジの装飾
       let rankBadgeHtml = `<span class="rank-num font-cyber">${item.rank}</span>`;
       if (item.rank === 1) {
         rankBadgeHtml = `<span class="rank-crown crown-gold font-cyber">🥇 1st</span>`;
