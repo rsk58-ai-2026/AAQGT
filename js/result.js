@@ -8,7 +8,7 @@ const ResultApp = {
   pendingList: [],
   isCongested: false,
   isLowBattery: false,
-  EX_SECRET_KEYWORD: 'フェニックス',
+  EX_SECRET_KEYWORD: 'しらす',
 
   async init() {
     const role = AppStorage.getRole();
