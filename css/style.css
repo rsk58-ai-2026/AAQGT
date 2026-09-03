@@ -32,14 +32,20 @@
   --signal-red: #ef4444;
   --signal-red-glow: rgba(239, 68, 68, 0.5);
 
+  /* 7セグメント用LEDレッド */
+  --led-red-active: #ff1744;
+  --led-red-glow: rgba(255, 23, 68, 0.75);
+  --led-red-dim: rgba(255, 23, 68, 0.12);
+
   /* 方眼グリッドライン */
   --grid-line: rgba(0, 120, 215, 0.15);
   --grid-line-bright: rgba(0, 240, 255, 0.28);
 
   /* フォントスタック */
-  --font-cyber: 'Chakra Petch', 'Share Tech Mono', sans-serif;
+  --font-cyber: 'Chakra Petch', sans-serif;
   --font-mono: 'Share Tech Mono', monospace;
   --font-base: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-segment: 'DSEG7-Classic', 'Share Tech Mono', monospace;
 }
 
 * {
@@ -101,7 +107,7 @@ html, body {
 .icon-accent { color: var(--neon-cyan); }
 
 /* --------------------------------------------------------------------------
-   1. サイバー装飾コンポーネント（コーナーブラケット & パネル）
+   1. コーナーブラケット & パネル
    -------------------------------------------------------------------------- */
 .screen-container {
   flex: 1;
@@ -111,9 +117,9 @@ html, body {
   max-width: 1280px;
   margin: 0 auto;
   width: 100%;
+  min-height: 100vh;
 }
 
-/* サイバーカード基底（ガラスモーフィズム） */
 .card {
   background: var(--bg-panel);
   backdrop-filter: blur(12px);
@@ -124,7 +130,6 @@ html, body {
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
 }
 
-/* 添付画像風：四隅のサイバーコーナーアクセント枠 */
 .cyber-border,
 .cyber-border-accent,
 .cyber-border-danger,
@@ -146,7 +151,6 @@ html, body {
   pointer-events: none;
 }
 
-/* 通常（シアン）コーナー */
 .cyber-border { border-color: rgba(0, 240, 255, 0.35); }
 .cyber-border::before {
   top: -2px; left: -2px;
@@ -159,7 +163,21 @@ html, body {
   border-right: 3px solid var(--neon-cyan);
 }
 
-/* ネオンマゼンタ / 危険コーナー */
+.cyber-border-accent {
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 25px var(--neon-cyan-glow);
+}
+.cyber-border-accent::before {
+  top: -2px; left: -2px;
+  border-top: 3px solid var(--neon-cyan);
+  border-left: 3px solid var(--neon-cyan);
+}
+.cyber-border-accent::after {
+  bottom: -2px; right: -2px;
+  border-bottom: 3px solid var(--neon-cyan);
+  border-right: 3px solid var(--neon-cyan);
+}
+
 .cyber-border-danger {
   border-color: rgba(255, 0, 127, 0.45);
   box-shadow: 0 0 25px rgba(255, 0, 127, 0.2);
@@ -175,7 +193,6 @@ html, body {
   border-right: 3px solid var(--neon-pink);
 }
 
-/* 警告 / 調整中コーナー */
 .cyber-border-warning {
   border-color: rgba(245, 158, 11, 0.45);
   box-shadow: 0 0 25px rgba(245, 158, 11, 0.15);
@@ -191,7 +208,6 @@ html, body {
   border-right: 3px solid var(--signal-amber);
 }
 
-/* 成功 / 承認コーナー */
 .cyber-border-success {
   border-color: rgba(16, 185, 129, 0.4);
   box-shadow: 0 0 25px rgba(16, 185, 129, 0.15);
@@ -259,12 +275,6 @@ html, body {
   color: #fff;
   border-color: #fbbf24;
 }
-.btn-warning.active {
-  background: var(--neon-pink);
-  border-color: #fff;
-  box-shadow: 0 0 20px var(--neon-pink-glow);
-  animation: pulse-danger 1.5s infinite;
-}
 
 .btn-success {
   background: linear-gradient(135deg, #059669, #047857);
@@ -315,26 +325,6 @@ html, body {
   box-shadow: 0 0 12px var(--neon-cyan-glow);
 }
 
-.diff-selector {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.diff-selector label {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-}
-.diff-selector input[type="radio"] {
-  accent-color: var(--neon-cyan);
-  width: 20px;
-  height: 20px;
-}
-.radio-ex { accent-color: var(--neon-pink) !important; }
-
 /* --------------------------------------------------------------------------
    3. ヘッダー & インジケータ
    -------------------------------------------------------------------------- */
@@ -374,7 +364,6 @@ html, body {
   color: #64748b;
 }
 
-/* バッジ類 */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -389,13 +378,6 @@ html, body {
 .badge-manager { background: rgba(217, 119, 6, 0.25); color: #fbbf24; border: 1px solid #fbbf24; }
 .badge-quiz { background: rgba(99, 102, 241, 0.25); color: #818cf8; border: 1px solid #818cf8; }
 .badge-exit { background: rgba(16, 185, 129, 0.25); color: #34d399; border: 1px solid #10b981; }
-.badge-ex {
-  background: rgba(255, 0, 127, 0.25);
-  color: var(--neon-pink);
-  border: 1px solid var(--neon-pink);
-  box-shadow: 0 0 10px var(--neon-pink-glow);
-  animation: pulse-danger 1.5s infinite;
-}
 
 .group-pill {
   font-family: var(--font-mono);
@@ -481,32 +463,14 @@ html, body {
   background: rgba(2, 132, 199, 0.15);
   box-shadow: 0 0 15px var(--neon-cyan-glow);
 }
-.btn-role-manager {
-  border-left: 5px solid #fbbf24;
-}
-.btn-role-manager:hover {
-  border-color: #fbbf24;
-  background: rgba(217, 119, 6, 0.15);
-}
-.role-icon {
-  font-size: 32px !important;
-  color: var(--neon-cyan);
-}
-.role-title {
-  font-family: var(--font-cyber);
-  font-size: 17px;
-  font-weight: 700;
-  display: block;
-}
-.role-desc {
-  font-size: 12px;
-  color: #94a3b8;
-  display: block;
-  margin-top: 2px;
-}
+.btn-role-manager { border-left: 5px solid #fbbf24; }
+.btn-role-manager:hover { border-color: #fbbf24; background: rgba(217, 119, 6, 0.15); }
+.role-icon { font-size: 32px !important; color: var(--neon-cyan); }
+.role-title { font-family: var(--font-cyber); font-size: 17px; font-weight: 700; display: block; }
+.role-desc { font-size: 12px; color: #94a3b8; display: block; margin-top: 2px; }
 
 /* --------------------------------------------------------------------------
-   5. 入口 / 進行機 [GATEWAY]
+   5. 入口 / 進行機 モニタリングダッシュボード
    -------------------------------------------------------------------------- */
 .section-card {
   background: var(--bg-panel);
@@ -534,120 +498,97 @@ html, body {
   color: var(--neon-cyan);
 }
 
-.pipeline-grid {
+.monitor-dashboard-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  gap: 20px;
 }
-@media (max-width: 800px) {
-  .pipeline-grid { grid-template-columns: 1fr; }
+@media (max-width: 860px) {
+  .monitor-dashboard-grid { grid-template-columns: 1fr; }
 }
 
-.room-card {
-  background: rgba(5, 8, 19, 0.7);
-  border-radius: 10px;
-  padding: 16px;
+.monitor-card {
+  background: rgba(5, 8, 19, 0.85);
+  border-radius: 12px;
+  padding: 20px;
   border: 2px solid #334155;
   transition: all 0.3s;
-}
-.room-card.status-ready {
-  border-color: var(--signal-green);
-  background: rgba(16, 185, 129, 0.06);
-  box-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
-}
-.room-card.status-playing {
-  border-color: var(--neon-pink);
-  background: rgba(255, 0, 127, 0.06);
-  box-shadow: 0 0 15px rgba(255, 0, 127, 0.15);
-}
-.room-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-.room-name {
-  font-family: var(--font-cyber);
-  font-size: 14px;
-  font-weight: 700;
-  color: #94a3b8;
-}
-.status-lamp {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #475569;
-}
-.status-ready .status-lamp {
-  background: var(--signal-green);
-  box-shadow: 0 0 10px var(--signal-green);
-}
-.status-playing .status-lamp {
-  background: var(--neon-pink);
-  box-shadow: 0 0 10px var(--neon-pink);
-  animation: blink 1.2s infinite;
-}
-.group-badge {
-  font-size: 19px;
-  font-weight: 700;
-  padding: 8px 12px;
-  background: #0d162b;
-  border: 1px solid #1e293b;
-  border-radius: 6px;
-  margin-bottom: 8px;
-  color: #f8fafc;
-}
-.status-label { font-size: 13px; color: #94a3b8; }
-.status-ready .status-label { color: var(--signal-green); font-weight: 700; }
-.status-playing .status-label { color: var(--neon-pink); font-weight: 700; }
-
-.control-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  align-items: center;
-}
-@media (max-width: 800px) {
-  .control-grid { grid-template-columns: 1fr; }
-}
-.control-action {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  position: relative;
 }
-.advance-warning {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--signal-amber);
-  background: rgba(245, 158, 11, 0.1);
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid rgba(245, 158, 11, 0.3);
-}
-.btn-advance {
-  width: 100%;
-  min-height: 72px;
-  font-size: 20px;
-  background: linear-gradient(135deg, #059669, #047857);
-  color: #fff;
-  border: 2px solid var(--signal-green);
-  border-radius: 12px;
-  box-shadow: 0 0 25px rgba(16, 185, 129, 0.4);
-}
-.btn-advance:not(:disabled) { animation: pulse-ready 2s infinite; }
-.btn-advance:disabled {
-  background: #1e293b;
+.monitor-card.card-state-idle {
   border-color: #334155;
-  color: #64748b;
-  box-shadow: none;
-  cursor: not-allowed;
-  animation: none;
+  background: rgba(5, 8, 19, 0.6);
+}
+.monitor-card.card-state-ready {
+  border-color: var(--signal-amber);
+  background: rgba(245, 158, 11, 0.08);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.2);
+}
+.monitor-card.card-state-playing {
+  border-color: var(--neon-cyan);
+  background: rgba(0, 240, 255, 0.08);
+  box-shadow: 0 0 25px var(--neon-cyan-glow);
+}
+.monitor-card.card-state-answered {
+  border-color: var(--signal-green);
+  background: rgba(16, 185, 129, 0.08);
+  box-shadow: 0 0 20px var(--signal-green-glow);
 }
 
-/* 混雑バナー & ペース指示バナー */
+.monitor-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.monitor-room-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+.monitor-group-display {
+  font-size: 24px;
+  font-weight: 900;
+  color: #f8fafc;
+  background: rgba(13, 22, 43, 0.9);
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 120, 215, 0.3);
+  text-align: center;
+}
+
+.monitor-state-badge {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-cyber);
+  text-align: center;
+}
+.state-badge-idle { background: #1e293b; color: #94a3b8; border: 1px solid #475569; }
+.state-badge-ready { background: rgba(245, 158, 11, 0.2); color: #fde047; border: 1px solid #fde047; }
+.state-badge-playing { background: rgba(0, 240, 255, 0.2); color: var(--neon-cyan); border: 1px solid var(--neon-cyan); animation: pulse 1.8s infinite; }
+.state-badge-answered { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; }
+
+.monitor-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+.monitor-stat-item {
+  background: rgba(15, 23, 42, 0.7);
+  padding: 8px 12px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+}
+.stat-caption { font-size: 11px; color: #64748b; margin-bottom: 2px; }
+.stat-value { font-size: 14px; color: #cbd5e1; }
+
+/* 混雑 & ペース指示バナー */
 .banner-congested {
   background: rgba(239, 68, 68, 0.15);
   border: 2px solid var(--neon-pink);
@@ -717,35 +658,11 @@ html, body {
   .manager-settings-grid { grid-template-columns: 1fr; }
 }
 
-.pace-control-buttons {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.btn-pace {
-  min-height: 44px;
-  flex: 1;
-  background: #1e293b;
-  border: 1px solid #334155;
-  color: #cbd5e1;
-}
-.btn-pace-wait.active {
-  background: #b45309;
-  border-color: #fde047;
-  color: #fff;
-  box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
-}
-.btn-pace-push.active {
-  background: #0284c7;
-  border-color: var(--neon-cyan);
-  color: #fff;
-  box-shadow: 0 0 15px var(--neon-cyan-glow);
-}
-.btn-pace-none.active {
-  background: #334155;
-  color: #fff;
-  border-color: #94a3b8;
-}
+.pace-control-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn-pace { min-height: 44px; flex: 1; background: #1e293b; border: 1px solid #334155; color: #cbd5e1; }
+.btn-pace-wait.active { background: #b45309; border-color: #fde047; color: #fff; box-shadow: 0 0 15px rgba(245, 158, 11, 0.4); }
+.btn-pace-push.active { background: #0284c7; border-color: var(--neon-cyan); color: #fff; box-shadow: 0 0 15px var(--neon-cyan-glow); }
+.btn-pace-none.active { background: #334155; color: #fff; border-color: #94a3b8; }
 
 .input-with-action { display: flex; gap: 8px; }
 
@@ -777,23 +694,9 @@ html, body {
   border-bottom: 1px solid rgba(0, 120, 215, 0.2);
   margin-bottom: 12px;
 }
-.manager-booth-name {
-  font-family: var(--font-cyber);
-  font-size: 15px;
-  color: #f8fafc;
-}
-.manager-stat-row {
-  display: flex;
-  align-items: flex-start;
-  margin-bottom: 6px;
-  font-size: 13px;
-}
-.stat-label {
-  width: 90px;
-  color: #94a3b8;
-  flex-shrink: 0;
-  font-family: var(--font-cyber);
-}
+.manager-booth-name { font-family: var(--font-cyber); font-size: 15px; color: #f8fafc; }
+.manager-stat-row { display: flex; align-items: flex-start; margin-bottom: 6px; font-size: 13px; }
+.stat-label { width: 90px; color: #94a3b8; flex-shrink: 0; font-family: var(--font-cyber); }
 .stat-value { color: #cbd5e1; word-break: break-all; }
 .snippet-text {
   display: -webkit-box;
@@ -803,68 +706,414 @@ html, body {
   font-size: 12px;
   color: #e2e8f0;
 }
-.timer-val {
-  font-size: 15px;
+.timer-val { font-size: 15px; font-weight: 700; color: var(--neon-cyan); }
+
+/* --------------------------------------------------------------------------
+   7. 問題機：Room 1 巨大スタート画面 & 難易度記号選択
+   -------------------------------------------------------------------------- */
+.start-screen-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 70vh;
+  text-align: center;
+  padding: 20px;
+}
+
+.start-screen-title {
+  font-size: 44px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  margin: 12px 0;
+  color: #fff;
+  text-shadow: 0 0 20px var(--neon-cyan-glow);
+}
+.start-screen-subtitle {
+  font-size: 16px;
+  color: #94a3b8;
+  margin-bottom: 40px;
+}
+
+/* 画面中央に鎮座する脈動サイバーコアスタートボタン */
+.btn-giant-start {
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 30%, #0369a1, #0a192f 70%, #050813 100%);
+  border: 4px solid var(--neon-cyan);
+  box-shadow:
+    0 0 30px var(--neon-cyan-glow),
+    inset 0 0 35px rgba(0, 240, 255, 0.4);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  position: relative;
+  transition: transform 0.25s, box-shadow 0.25s;
+  animation: core-pulse 2.4s infinite ease-in-out;
+}
+.btn-giant-start::before {
+  content: '';
+  position: absolute;
+  top: -12px; left: -12px; right: -12px; bottom: -12px;
+  border-radius: 50%;
+  border: 1px dashed rgba(0, 240, 255, 0.5);
+  animation: rotate-ring 12s linear infinite;
+  pointer-events: none;
+}
+.btn-giant-start:active {
+  transform: scale(0.94);
+  box-shadow: 0 0 50px var(--neon-cyan);
+}
+.giant-start-icon { font-size: 72px !important; color: var(--neon-cyan); }
+.giant-start-text {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.8);
+}
+
+@keyframes core-pulse {
+  0%, 100% {
+    box-shadow: 0 0 30px var(--neon-cyan-glow), inset 0 0 30px rgba(0, 240, 255, 0.35);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 55px rgba(0, 240, 255, 0.7), inset 0 0 45px rgba(0, 240, 255, 0.6);
+    transform: scale(1.03);
+  }
+}
+@keyframes rotate-ring {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 難易度（問題セット）記号選択カード */
+.diff-select-card {
+  max-width: 680px;
+  margin: 20px auto;
+  width: 100%;
+  padding: 32px;
+}
+.diff-select-head {
+  text-align: center;
+  margin-bottom: 20px;
+}
+.diff-select-title {
+  font-size: 24px;
   font-weight: 700;
-  color: var(--neon-cyan);
+  color: #f8fafc;
+  margin: 10px 0;
+}
+.diff-timer-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(5, 8, 19, 0.85);
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--signal-amber);
+  color: #fde047;
+  font-size: 15px;
+}
+.diff-timer-val { font-size: 22px; font-weight: 900; color: #fbbf24; }
+.diff-auto-warning {
+  text-align: center;
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 28px;
+}
+
+/* 幾何学記号ボタングリッド */
+.symbol-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.btn-symbol-choice {
+  background: rgba(15, 23, 42, 0.85);
+  border: 2px solid #334155;
+  border-radius: 14px;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-symbol-choice:hover {
+  transform: translateY(-4px);
+}
+.btn-symbol-choice:active { transform: scale(0.96); }
+
+.symbol-char {
+  font-size: 48px;
+  line-height: 1;
+  transition: all 0.25s;
+}
+.symbol-label {
+  font-family: var(--font-cyber);
+  font-size: 13px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+/* ▲ EASY（シアン / 安定） */
+.btn-symbol-choice[data-diff="easy"] .symbol-char { color: var(--neon-cyan); }
+.btn-symbol-choice[data-diff="easy"].active {
+  border-color: var(--neon-cyan);
+  background: rgba(0, 240, 255, 0.16);
+  box-shadow: 0 0 25px var(--neon-cyan-glow);
+}
+.btn-symbol-choice[data-diff="easy"].active .symbol-label { color: #fff; }
+
+/* ■ NORMAL（イエロー / 標準） */
+.btn-symbol-choice[data-diff="normal"] .symbol-char { color: #fbbf24; }
+.btn-symbol-choice[data-diff="normal"].active {
+  border-color: #fbbf24;
+  background: rgba(251, 191, 36, 0.16);
+  box-shadow: 0 0 25px rgba(251, 191, 36, 0.45);
+}
+.btn-symbol-choice[data-diff="normal"].active .symbol-label { color: #fff; }
+
+/* ● HARD（マゼンタ / 危険） */
+.btn-symbol-choice[data-diff="hard"] .symbol-char { color: var(--neon-pink); }
+.btn-symbol-choice[data-diff="hard"].active {
+  border-color: var(--neon-pink);
+  background: rgba(255, 0, 127, 0.16);
+  box-shadow: 0 0 25px var(--neon-pink-glow);
+}
+.btn-symbol-choice[data-diff="hard"].active .symbol-label { color: #fff; }
+
+/* EXスワイプ領域 & せり上がりアニメーション */
+.ex-swipe-area {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: rgba(5, 8, 19, 0.4);
+  border: 1px dashed rgba(255, 0, 127, 0.3);
+  padding: 14px;
+  margin-bottom: 24px;
+  text-align: center;
+  min-height: 86px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.swipe-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: #64748b;
+}
+.swipe-arrow-anim {
+  animation: float-up 1.6s infinite ease-in-out;
+  color: rgba(255, 0, 127, 0.7);
+}
+@keyframes float-up {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50% { transform: translateY(-6px); opacity: 1; }
+}
+.swipe-hint-text {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #94a3b8;
+}
+
+/* ★ EX OVERRIDE（ネオンレッド・炎のように発光） */
+.btn-symbol-ex {
+  width: 100%;
+  border-color: #ff0033 !important;
+  background: linear-gradient(135deg, rgba(255, 0, 51, 0.25), rgba(185, 28, 28, 0.35)) !important;
+  box-shadow: 0 0 30px rgba(255, 0, 51, 0.6) !important;
+  animation: ex-flame-pulse 1.8s infinite alternate ease-in-out;
+}
+.btn-symbol-ex .symbol-char {
+  color: #ff3366 !important;
+  font-size: 40px !important;
+  text-shadow: 0 0 15px #ff0033;
+}
+.btn-symbol-ex.active {
+  background: linear-gradient(135deg, #ff0033, #b91c1c) !important;
+  border-color: #fff !important;
+}
+.btn-symbol-ex.active .symbol-char { color: #fff !important; }
+.btn-symbol-ex.active .symbol-label { color: #fff !important; }
+
+.anim-slide-up {
+  animation: slide-up-reveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes slide-up-reveal {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes ex-flame-pulse {
+  from { box-shadow: 0 0 20px rgba(255, 0, 51, 0.4); }
+  to { box-shadow: 0 0 35px rgba(255, 0, 51, 0.85); }
+}
+
+.btn-confirm-diff {
+  width: 100%;
+  min-height: 60px;
+  font-size: 18px;
+  letter-spacing: 1px;
+  border-radius: 12px;
 }
 
 /* --------------------------------------------------------------------------
-   7. 問題機 [AI NODE 1〜3] & ルーム別グリッチエフェクト
+   8. 問題機：Room 2 / Room 3 準備カウントダウン（赤色7セグメントLED）
    -------------------------------------------------------------------------- */
-/* Room 1: 薄いスキャンライン */
-.glitch-low {
+.countdown-ready-card {
+  max-width: 620px;
+  margin: 40px auto;
+  width: 100%;
+  padding: 40px 24px;
+}
+.countdown-ready-title {
+  font-size: 26px;
+  font-weight: 900;
+  color: #f8fafc;
+  margin: 12px 0 6px 0;
+}
+.countdown-ready-subtitle {
+  font-size: 14px;
+  color: #94a3b8;
+  margin-bottom: 30px;
+}
+
+/* 本物のデジタル時計のような赤色7セグメント表示 */
+.seven-segment-container {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  background: #02040a;
+  padding: 24px 44px;
+  border-radius: 16px;
+  border: 3px solid #1e293b;
+  box-shadow:
+    inset 0 0 25px rgba(0, 0, 0, 0.9),
+    0 0 25px rgba(255, 23, 68, 0.15);
+  margin-bottom: 32px;
   position: relative;
 }
-.glitch-low::before {
-  content: '';
+/* うっすら見える非点灯セグメント背景 */
+.seven-segment-container::before {
+  content: '88';
+  font-family: var(--font-segment);
+  font-size: 96px;
+  font-weight: 700;
+  color: var(--led-red-dim);
+  letter-spacing: 6px;
+  position: absolute;
+  top: 24px;
+  left: 44px;
+  pointer-events: none;
+}
+.seven-segment-timer {
+  font-family: var(--font-segment);
+  font-size: 96px;
+  font-weight: 700;
+  color: var(--led-red-active);
+  letter-spacing: 6px;
+  line-height: 1;
+  text-shadow:
+    0 0 10px rgba(255, 0, 51, 0.7),
+    0 0 22px rgba(255, 23, 68, 0.85);
+  z-index: 1;
+}
+.seven-segment-unit {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--led-red-active);
+  margin-left: 12px;
+  text-shadow: 0 0 8px rgba(255, 0, 51, 0.6);
+  z-index: 1;
+}
+
+.btn-ready-start {
+  min-height: 68px;
+  width: 100%;
+  max-width: 380px;
+  font-size: 20px;
+  border-radius: 12px;
+  animation: pulse-ready 2s infinite;
+}
+
+/* --------------------------------------------------------------------------
+   9. アイドル時のフルスクリーン・サイバーグリッチ演出 (Room 2/3)
+   -------------------------------------------------------------------------- */
+.glitch-standby-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 70vh;
+  text-align: center;
+  padding: 20px;
+  overflow: hidden;
+}
+
+/* 走査線（スキャンライン） */
+.glitch-noise-layer {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 240, 255, 0.03) 50%);
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%,
+    rgba(0, 240, 255, 0.04) 50%
+  );
   background-size: 100% 4px;
   pointer-events: none;
-  z-index: 10;
+  z-index: 1;
 }
 
-/* Room 2: わずかな水平ブレとRGBシフト（光過敏性対策済） */
-.glitch-mid .question-card {
-  animation: glitch-anim-mid 6s infinite ease-in-out;
-}
-@keyframes glitch-anim-mid {
-  0%, 94%, 100% { transform: translateX(0); }
-  95% { transform: translateX(-2px); filter: drop-shadow(1px 0 0 rgba(255,0,127,0.5)); }
-  97% { transform: translateX(2px); filter: drop-shadow(-1px 0 0 rgba(0,240,255,0.5)); }
-}
-
-/* Room 3: 高密度グリッド歪みと横方向ノイズジッター（ストロボ明滅なし） */
-.glitch-high {
+/* 水平ブレと微弱RGBシフト（光過敏性に配慮） */
+.glitch-standby-content {
   position: relative;
+  z-index: 2;
+  max-width: 580px;
+  animation: gentle-glitch 5s infinite ease-in-out;
 }
-.glitch-high .question-card {
-  animation: glitch-anim-high 4s infinite ease-in-out;
-}
-@keyframes glitch-anim-high {
-  0%, 92%, 100% { transform: translateX(0); }
-  93% { transform: translateX(-3px); }
-  94% { transform: translateX(3px); }
-  95% { transform: translateX(0); }
-  97% { transform: translateX(-1px); }
+@keyframes gentle-glitch {
+  0%, 94%, 100% { transform: translateX(0); filter: none; }
+  95% { transform: translateX(-3px); filter: drop-shadow(2px 0 0 rgba(255,0,127,0.4)); }
+  97% { transform: translateX(3px); filter: drop-shadow(-2px 0 0 rgba(0,240,255,0.4)); }
 }
 
-/* 誤答ショックエフェクト */
-.effect-wrong-shock {
-  animation: wrong-shake 0.5s ease-in-out;
-  border-color: var(--neon-pink) !important;
+.glitch-icon-anim {
+  animation: pulse 2.5s infinite;
+  margin-bottom: 16px;
 }
-@keyframes wrong-shake {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-8px); }
-  40% { transform: translateX(8px); }
-  60% { transform: translateX(-6px); }
-  80% { transform: translateX(6px); }
+.glitch-standby-title {
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #f8fafc;
+  margin-bottom: 12px;
+}
+.glitch-standby-text {
+  font-size: 15px;
+  color: #94a3b8;
+  margin-bottom: 24px;
 }
 
-/* クイズUIコンポーネント */
+/* --------------------------------------------------------------------------
+   10. クイズ出題・攻略画面 (Playing)
+   -------------------------------------------------------------------------- */
 .quiz-header {
   display: flex;
   justify-content: space-between;
@@ -924,10 +1173,7 @@ html, body {
   box-shadow: 0 0 20px var(--neon-pink-glow);
   animation: pulse-danger 1s infinite;
 }
-.timer-text {
-  font-size: 26px;
-  font-weight: 700;
-}
+.timer-text { font-size: 26px; font-weight: 700; }
 
 .question-card { margin-bottom: 20px; }
 .question-header {
@@ -936,16 +1182,8 @@ html, body {
   align-items: center;
   margin-bottom: 10px;
 }
-.question-id-badge {
-  font-size: 13px;
-  color: #94a3b8;
-}
-.media-zoom-hint {
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
+.question-id-badge { font-size: 13px; color: #94a3b8; }
+.media-zoom-hint { font-size: 12px; display: flex; align-items: center; gap: 4px; }
 .question-text {
   font-size: 22px;
   line-height: 1.6;
@@ -953,10 +1191,7 @@ html, body {
   white-space: pre-wrap;
   color: #f8fafc;
 }
-.question-media-container {
-  margin-top: 16px;
-  text-align: center;
-}
+.question-media-container { margin-top: 16px; text-align: center; }
 .quiz-media {
   max-width: 100%;
   max-height: 280px;
@@ -988,7 +1223,6 @@ html, body {
   align-items: center;
   gap: 6px;
   font-size: 15px;
-  font-family: var(--font-cyber);
   color: #fbbf24;
 }
 .hint-list { display: flex; flex-direction: column; gap: 8px; }
@@ -1003,14 +1237,9 @@ html, body {
   font-size: 14px;
   animation: fadeIn 0.3s ease;
 }
-.hint-empty {
-  color: #64748b;
-  font-size: 13px;
-  text-align: center;
-  padding: 8px;
-}
+.hint-empty { color: #64748b; font-size: 13px; text-align: center; padding: 8px; }
 
-/* サイバーシンボル判定ボタン（世界観保護） */
+/* サイバー判定ボタンバー */
 .staff-action-bar-cyber {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -1062,7 +1291,19 @@ html, body {
 }
 .btn-cyber-abort:hover { background: #334155; color: #fff; }
 
-/* 演出レイヤー（正解 & 時間切れ） */
+.effect-wrong-shock {
+  animation: wrong-shake 0.5s ease-in-out;
+  border-color: var(--neon-pink) !important;
+}
+@keyframes wrong-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-6px); }
+  80% { transform: translateX(6px); }
+}
+
+/* 全画面シャットダウン & ブリーチ演出 */
 .effect-fullscreen-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -1072,7 +1313,6 @@ html, body {
   justify-content: center;
   backdrop-filter: blur(16px);
 }
-/* CRT電源オフ風シャットダウン演出 */
 .effect-purged {
   background: rgba(5, 8, 19, 0.95);
   animation: crt-off 1.6s forwards cubic-bezier(0.77, 0, 0.175, 1);
@@ -1084,7 +1324,6 @@ html, body {
   100% { transform: scale(0, 0); opacity: 0; }
 }
 
-/* レッドアウト・感染ハッキング */
 .effect-breach {
   background: rgba(220, 38, 38, 0.3);
   box-shadow: inset 0 0 100px var(--neon-pink);
@@ -1094,13 +1333,65 @@ html, body {
   0%, 100% { opacity: 0.9; }
   50% { opacity: 0.5; }
 }
-
 .effect-content { text-align: center; }
 .effect-title { font-size: 48px; font-weight: 900; margin-top: 12px; }
 .effect-subtitle { font-size: 18px; color: #e2e8f0; margin-top: 6px; }
 
 /* --------------------------------------------------------------------------
-   8. 出口機 [TERMINAL]（生還・ダークガラスモーフィズム）
+   11. 解答後待機 & 移動案内画面 (Answered)
+   -------------------------------------------------------------------------- */
+.waiting-card {
+  text-align: center;
+  padding: 60px 20px;
+  margin: 30px auto;
+  max-width: 680px;
+}
+.waiting-icon-pulse { margin-bottom: 20px; animation: pulse 2s infinite; }
+.waiting-title { font-size: 28px; margin-bottom: 12px; }
+.waiting-subtitle { color: #94a3b8; font-size: 15px; max-width: 500px; margin: 0 auto; line-height: 1.6; }
+
+/* Room 2 専用：警告ストライプ待機フレーム */
+.waiting-card.cyber-border-warning {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      rgba(245, 158, 11, 0.03),
+      rgba(245, 158, 11, 0.03) 15px,
+      rgba(5, 8, 19, 0.85) 15px,
+      rgba(5, 8, 19, 0.85) 30px
+    );
+  border: 2px solid var(--signal-amber);
+}
+
+.move-card {
+  padding: 60px 20px;
+  margin: 30px auto;
+  max-width: 680px;
+  background: var(--bg-panel);
+  box-shadow: 0 0 45px rgba(0, 240, 255, 0.25);
+}
+.move-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--neon-cyan);
+  margin-bottom: 20px;
+}
+.move-text {
+  font-size: 36px;
+  font-weight: 900;
+  color: var(--neon-cyan);
+  line-height: 1.4;
+  margin-bottom: 24px;
+}
+.move-arrow-anim {
+  color: var(--neon-cyan);
+  animation: pulse-ready 1.5s infinite;
+}
+
+/* --------------------------------------------------------------------------
+   12. 出口機 [TERMINAL]（保留キュー式リザルト）
    -------------------------------------------------------------------------- */
 .result-header {
   display: flex;
@@ -1111,7 +1402,6 @@ html, body {
   border-bottom: 1px solid rgba(16, 185, 129, 0.3);
 }
 
-/* 保留キュー・横スクロールトレイ */
 .queue-section {
   background: var(--bg-panel);
   border-radius: 12px;
@@ -1125,13 +1415,7 @@ html, body {
   align-items: center;
   margin-bottom: 12px;
 }
-.queue-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  color: var(--neon-cyan);
-}
+.queue-title { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--neon-cyan); }
 .queue-rack-container {
   display: flex;
   gap: 12px;
@@ -1139,24 +1423,7 @@ html, body {
   padding-bottom: 8px;
   -webkit-overflow-scrolling: touch;
 }
-.queue-rack-container::-webkit-scrollbar {
-  height: 6px;
-}
-.queue-rack-container::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
-}
-.queue-rack-container::-webkit-scrollbar-thumb:hover {
-  background: var(--neon-cyan);
-}
-
-.queue-empty-msg {
-  color: #64748b;
-  font-size: 13px;
-  padding: 14px 0;
-  width: 100%;
-  text-align: center;
-}
+.queue-empty-msg { color: #64748b; font-size: 13px; padding: 14px 0; width: 100%; text-align: center; }
 
 .queue-chip {
   min-width: 130px;
@@ -1173,26 +1440,14 @@ html, body {
   flex-shrink: 0;
   transition: all 0.2s;
 }
-.queue-chip:hover {
-  border-color: var(--neon-cyan);
-  background: rgba(2, 132, 199, 0.15);
-}
+.queue-chip:hover { border-color: var(--neon-cyan); background: rgba(2, 132, 199, 0.15); }
 .queue-chip.active {
   border-color: var(--neon-cyan);
   background: rgba(2, 132, 199, 0.25);
   box-shadow: 0 0 15px var(--neon-cyan-glow);
 }
-.chip-group-id {
-  font-family: var(--font-mono);
-  font-size: 15px;
-  font-weight: 700;
-  color: #fff;
-}
-.chip-score {
-  font-family: var(--font-cyber);
-  font-size: 12px;
-  color: var(--neon-cyan);
-}
+.chip-group-id { font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: #fff; }
+.chip-score { font-family: var(--font-cyber); font-size: 12px; color: var(--neon-cyan); }
 .chip-ex-tag {
   background: var(--neon-pink);
   color: #fff;
@@ -1203,7 +1458,6 @@ html, body {
   font-weight: 700;
 }
 
-/* スコアサマリーボード */
 .result-score-board {
   display: flex;
   justify-content: space-around;
@@ -1215,23 +1469,10 @@ html, body {
   position: relative;
 }
 .score-item { text-align: center; }
-.score-label {
-  display: block;
-  font-size: 13px;
-  color: #94a3b8;
-  margin-bottom: 4px;
-}
-.score-val {
-  font-size: 36px;
-  font-weight: 900;
-  color: var(--neon-cyan);
-}
+.score-label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 4px; }
+.score-val { font-size: 36px; font-weight: 900; color: var(--neon-cyan); }
 .score-val small { font-size: 16px; font-weight: 400; }
-.score-divider {
-  width: 1px;
-  height: 48px;
-  background: #334155;
-}
+.score-divider { width: 1px; height: 48px; background: #334155; }
 .bonus-badge {
   position: absolute;
   top: -12px;
@@ -1245,7 +1486,6 @@ html, body {
   box-shadow: 0 0 15px rgba(251, 191, 36, 0.6);
 }
 
-/* EX合格バナー */
 .banner-ex-qualified {
   background: linear-gradient(135deg, rgba(180, 83, 9, 0.7), rgba(217, 119, 6, 0.8));
   border: 2px solid #fde047;
@@ -1277,12 +1517,7 @@ html, body {
   border: 1px solid #fde047;
 }
 .secret-label { font-size: 14px; color: #cbd5e1; }
-.secret-word {
-  font-size: 28px;
-  font-weight: 900;
-  color: #fde047;
-  letter-spacing: 4px;
-}
+.secret-word { font-size: 28px; font-weight: 900; color: #fde047; letter-spacing: 4px; }
 
 .banner-normal-clear {
   background: rgba(16, 185, 129, 0.15);
@@ -1301,7 +1536,6 @@ html, body {
   color: #34d399;
 }
 
-/* 成績詳細カードリスト */
 .result-cards-grid {
   display: flex;
   flex-direction: column;
@@ -1322,11 +1556,7 @@ html, body {
   align-items: center;
   margin-bottom: 10px;
 }
-.result-q-title {
-  font-family: var(--font-cyber);
-  font-size: 16px;
-  font-weight: 700;
-}
+.result-q-title { font-family: var(--font-cyber); font-size: 16px; font-weight: 700; }
 .result-judge-badge {
   display: inline-flex;
   align-items: center;
@@ -1359,7 +1589,7 @@ html, body {
 }
 
 /* --------------------------------------------------------------------------
-   9. モーダル群 (マニュアル & カンニングDB / フルスクリーンメディア)
+   13. モーダル群 (マニュアル & 判定 & メディア)
    -------------------------------------------------------------------------- */
 .modal-overlay {
   position: fixed;
@@ -1373,7 +1603,6 @@ html, body {
   padding: 20px;
 }
 
-/* マニュアルカード */
 .manual-card {
   max-width: 900px;
   width: 100%;
@@ -1393,25 +1622,11 @@ html, body {
   margin-bottom: 16px;
 }
 .manual-title-box { display: flex; align-items: center; gap: 8px; }
-.manual-title {
-  font-family: var(--font-cyber);
-  font-size: 18px;
-  color: #f8fafc;
-}
-.btn-icon-close {
-  background: transparent;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  padding: 6px;
-}
+.manual-title { font-family: var(--font-cyber); font-size: 18px; color: #f8fafc; }
+.btn-icon-close { background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 6px; }
 .btn-icon-close:hover { color: #fff; }
 
-.manual-tab-nav {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 16px;
-}
+.manual-tab-nav { display: flex; gap: 10px; margin-bottom: 16px; }
 .manual-tab-btn {
   min-height: 44px;
   padding: 8px 18px;
@@ -1423,19 +1638,8 @@ html, body {
   border-radius: 8px;
   cursor: pointer;
 }
-.manual-tab-btn.active {
-  background: rgba(2, 132, 199, 0.25);
-  border-color: var(--neon-cyan);
-  color: #fff;
-}
-
-.manual-body {
-  flex: 1;
-  overflow-y: auto;
-  padding-right: 8px;
-}
-.manual-body::-webkit-scrollbar { width: 6px; }
-.manual-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+.manual-tab-btn.active { background: rgba(2, 132, 199, 0.25); border-color: var(--neon-cyan); color: #fff; }
+.manual-body { flex: 1; overflow-y: auto; padding-right: 8px; }
 
 .flow-step-block {
   background: rgba(5, 8, 19, 0.7);
@@ -1444,30 +1648,11 @@ html, body {
   padding: 16px;
   margin-bottom: 14px;
 }
-.flow-heading {
-  font-family: var(--font-cyber);
-  font-size: 16px;
-  color: var(--neon-cyan);
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.step-num {
-  font-size: 13px;
-  background: #0284c7;
-  color: #fff;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
+.flow-heading { font-family: var(--font-cyber); font-size: 16px; color: var(--neon-cyan); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+.step-num { font-size: 13px; background: #0284c7; color: #fff; padding: 2px 6px; border-radius: 4px; }
 .flow-text { font-size: 14px; line-height: 1.7; color: #cbd5e1; }
 
-.db-filter-bar {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
+.db-filter-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .db-filter-chip {
   min-height: 38px;
   padding: 6px 14px;
@@ -1479,43 +1664,33 @@ html, body {
   font-family: var(--font-cyber);
   font-size: 13px;
 }
-.db-filter-chip.active {
-  background: var(--neon-cyan);
-  color: #000;
-  font-weight: 700;
-}
-
-.db-cards-container {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.manual-db-card {
-  background: rgba(5, 8, 19, 0.85);
-  border: 1px solid #334155;
-  border-radius: 8px;
-  padding: 14px;
-}
-.db-card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
+.db-filter-chip.active { background: var(--neon-cyan); color: #000; font-weight: 700; }
+.db-cards-container { display: flex; flex-direction: column; gap: 12px; }
+.manual-db-card { background: rgba(5, 8, 19, 0.85); border: 1px solid #334155; border-radius: 8px; padding: 14px; }
+.db-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .db-card-qtext { font-size: 14px; line-height: 1.5; margin-bottom: 8px; color: #fff; }
 .db-card-media { margin-bottom: 8px; }
 .db-thumb { max-height: 90px; border-radius: 4px; }
-.db-card-ans, .db-card-hints, .db-card-exp {
-  font-size: 13px;
-  margin-top: 4px;
-}
+.db-card-ans, .db-card-hints, .db-card-exp { font-size: 13px; margin-top: 4px; }
 .db-label { color: #94a3b8; font-weight: 700; margin-right: 4px; }
 
-/* フルスクリーンメディアモーダル */
-.modal-media {
-  background: rgba(0, 0, 0, 0.95);
-  padding: 10px;
+/* 判定モーダル */
+.modal-card { max-width: 460px; width: 100%; text-align: center; }
+.modal-title { font-size: 22px; margin-bottom: 12px; }
+.modal-subtitle { font-size: 15px; color: #94a3b8; margin-bottom: 16px; }
+.modal-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: rgba(5, 8, 19, 0.8);
+  padding: 14px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  font-size: 15px;
 }
+.modal-actions { display: flex; gap: 12px; justify-content: center; }
+
+/* フルスクリーンメディアモーダル */
+.modal-media { background: rgba(0, 0, 0, 0.95); padding: 10px; }
 .btn-close-fullscreen {
   position: absolute;
   top: 20px;
@@ -1547,31 +1722,8 @@ html, body {
   box-shadow: 0 0 35px rgba(0, 240, 255, 0.3);
 }
 
-/* 判定モーダル */
-.modal-card {
-  max-width: 460px;
-  width: 100%;
-  text-align: center;
-}
-.modal-title { font-size: 22px; margin-bottom: 12px; }
-.modal-subtitle { font-size: 15px; color: #94a3b8; margin-bottom: 16px; }
-.modal-stat-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  background: rgba(5, 8, 19, 0.8);
-  padding: 14px;
-  border-radius: 8px;
-  margin-bottom: 24px;
-  font-size: 15px;
-}
-.modal-actions { display: flex; gap: 12px; justify-content: center; }
-
-/* 待機・緊急停止オーバーレイ */
-.pause-card, .info-pause-card {
-  max-width: 520px;
-  width: 100%;
-  padding: 40px 30px;
-}
+/* 一時停止オーバーレイ */
+.pause-card, .info-pause-card { max-width: 520px; width: 100%; padding: 40px 30px; }
 .cyber-glitch-badge {
   display: inline-block;
   font-family: var(--font-cyber);
@@ -1583,18 +1735,9 @@ html, body {
   color: var(--neon-cyan);
   margin-bottom: 14px;
 }
-.cyber-glitch-badge.danger {
-  background: rgba(255, 0, 127, 0.2);
-  color: var(--neon-pink);
-}
-.cyber-glitch-badge.warning {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
-}
-.cyber-glitch-badge.success {
-  background: rgba(16, 185, 129, 0.2);
-  color: var(--signal-green);
-}
+.cyber-glitch-badge.danger { background: rgba(255, 0, 127, 0.2); color: var(--neon-pink); }
+.cyber-glitch-badge.warning { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+.cyber-glitch-badge.success { background: rgba(16, 185, 129, 0.2); color: var(--signal-green); }
 
 .pause-title { font-size: 26px; color: var(--neon-pink); margin-bottom: 12px; }
 .info-pause-title { font-size: 26px; color: #fbbf24; margin-bottom: 12px; }
@@ -1632,13 +1775,8 @@ html, body {
 }
 
 /* --------------------------------------------------------------------------
-   10. アニメーション定義
+   14. アニメーション定義
    -------------------------------------------------------------------------- */
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
-}
-
 @keyframes pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.05); }
@@ -1656,47 +1794,11 @@ html, body {
 }
 
 @keyframes pulse-danger {
-  0%, 100% {
-    box-shadow: 0 0 15px rgba(255, 0, 127, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 30px rgba(255, 0, 127, 0.7);
-  }
+  0%, 100% { box-shadow: 0 0 15px rgba(255, 0, 127, 0.3); }
+  50% { box-shadow: 0 0 30px rgba(255, 0, 127, 0.7); }
 }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-/* 待機・移動画面スタイル */
-.waiting-card { text-align: center; padding: 60px 20px; margin-top: 40px; }
-.waiting-icon-pulse { margin-bottom: 20px; animation: pulse 2s infinite; }
-.waiting-title { font-size: 28px; margin-bottom: 12px; }
-.waiting-subtitle { color: #94a3b8; font-size: 15px; max-width: 500px; margin: 0 auto; line-height: 1.6; }
-
-.move-card {
-  padding: 60px 20px;
-  margin-top: 30px;
-  background: var(--bg-panel);
-  box-shadow: 0 0 45px rgba(0, 240, 255, 0.25);
-}
-.move-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  color: var(--neon-cyan);
-  margin-bottom: 20px;
-}
-.move-text {
-  font-size: 36px;
-  font-weight: 900;
-  color: var(--neon-cyan);
-  line-height: 1.4;
-  margin-bottom: 24px;
-}
-.move-arrow-anim {
-  color: var(--neon-cyan);
-  animation: pulse-ready 1.5s infinite;
 }

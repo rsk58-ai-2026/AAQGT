@@ -1,28 +1,35 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * quiz.js - 問題機ブース端末（第1問〜第3問）
+ * quiz.js - 問題機ブース端末（自律分散ステートマシン）
  */
 const QuizApp = {
   roomKey: null,
   roomNumber: 1,
   currentGroupId: null,
-  isLowBattery: false,
-  pollingTimer: null,
-  lastPipelineVersion: null,
-  hasAnsweredCurrentGroup: false,
+  currentDifficulty: 'normal',
+  currentState: 'idle', // 'idle' | 'ready' | 'playing' | 'answered'
 
   cachedQuestions: [],
   currentQuestion: null,
-  currentDifficulty: 'normal',
   hintsRevealedCount: 0,
   timeLeft: 0,
+  missCount: 0,
   timerInterval: null,
+
+  // 30秒カウントダウン用（Readyおよび難易度選択）
+  readyTimeLeft: 30,
+  readyTimerInterval: null,
+
+  // UI・通信フラグ
+  isLowBattery: false,
   isEmergencyPaused: false,
   isInfoPaused: false,
+  pollingTimer: null,
   pendingJudgeResult: null,
 
-  // 誤答トラッカー
-  missCount: 0,
+  // スワイプ検知用（Room1 EX用）
+  touchStartY: 0,
+  isExUnlocked: false,
 
   async init() {
     const role = AppStorage.getRole();
@@ -34,44 +41,34 @@ const QuizApp = {
     const screen = document.getElementById('quiz-screen');
     screen.classList.remove('hidden');
 
-    // 部屋ごとのグリッチ演出クラスを適用
-    const glitchClass = CONFIG.GLITCH_CLASSES[this.roomKey] || 'glitch-low';
-    screen.classList.add(glitchClass);
-
-    document.getElementById('quiz-room-badge').textContent = CONFIG.ROLE_NAMES[role];
+    const badge = document.getElementById('quiz-room-badge');
+    if (badge) badge.textContent = CONFIG.ROLE_NAMES[role];
 
     this.setupExitListeners();
     this.setupMediaFullscreenModal();
-
-    try {
-      await API.updateRoomStatus(this.roomKey, 'ready');
-    } catch (e) {
-      console.warn('初期接続通知失敗:', e);
-    }
+    this.setupRoomSpecificEvents();
 
     await this.preloadQuestions();
+
+    // 画面初期状態を描画
+    this.renderState('idle');
     this.startPolling();
   },
 
   setupExitListeners() {
     const notifyExit = () => {
-      const payload = JSON.stringify({ action: 'updateRoomStatus', roomKey: this.roomKey, status: 'unknown' });
+      const payload = JSON.stringify({
+        action: 'updateRoomStatus',
+        roomKey: this.roomKey,
+        status: 'idle'
+      });
       if (navigator.sendBeacon) navigator.sendBeacon(CONFIG.GAS_API_URL, payload);
     };
 
     window.addEventListener('pagehide', notifyExit);
     window.addEventListener('beforeunload', notifyExit);
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') {
-        notifyExit();
-      } else if (document.visibilityState === 'visible') {
-        API.updateRoomStatus(this.roomKey, this.currentGroupId ? 'playing' : 'ready');
-      }
-    });
   },
 
-  // 画像・動画のフルスクリーンモーダル設定
   setupMediaFullscreenModal() {
     const modal = document.getElementById('media-fullscreen-modal');
     if (!modal) return;
@@ -104,14 +101,36 @@ const QuizApp = {
     modal.classList.remove('hidden');
   },
 
-  async toggleBatteryAlert() {
-    this.isLowBattery = !this.isLowBattery;
-    const btn = document.getElementById('btn-battery-quiz');
-    btn.classList.toggle('active', this.isLowBattery);
-    btn.innerHTML = this.isLowBattery
-      ? '<span class="material-symbols-outlined icon-sm">battery_alert</span> 給電要請'
-      : '<span class="material-symbols-outlined icon-sm">battery_alert</span> バッテリー';
-    await API.reportLowBattery(this.roomKey, this.isLowBattery);
+  setupRoomSpecificEvents() {
+    // Room1: 画面上スワイプ検知でEXモード記号を露出
+    if (this.roomKey === 'room1') {
+      const selectView = document.getElementById('quiz-view-select-diff');
+      if (selectView) {
+        selectView.addEventListener('touchstart', (e) => {
+          this.touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+
+        selectView.addEventListener('touchend', (e) => {
+          const touchEndY = e.changedTouches[0].clientY;
+          const deltaY = this.touchStartY - touchEndY;
+          // Y軸上方へ80px以上の強い上スワイプを検知
+          if (deltaY > 80) {
+            this.unlockExSymbol();
+          }
+        }, { passive: true });
+      }
+    }
+  },
+
+  unlockExSymbol() {
+    if (this.isExUnlocked) return;
+    this.isExUnlocked = true;
+    const exBtn = document.getElementById('btn-symbol-ex');
+    if (exBtn) {
+      exBtn.classList.remove('hidden');
+      exBtn.classList.add('anim-slide-up');
+      this.playAudioTone(950, 0.3, 'sawtooth');
+    }
   },
 
   async preloadQuestions() {
@@ -137,32 +156,32 @@ const QuizApp = {
       const res = await API.getStatus();
       if (!res || !res.success) return;
 
-      // 1. 緊急一時停止の検知
+      // 1. 緊急一時停止の監視
       const pauseOverlay = document.getElementById('pause-lock-overlay');
       if (res.systemPaused) {
         if (!this.isEmergencyPaused) {
           this.isEmergencyPaused = true;
           this.stopTimer();
-          pauseOverlay.classList.remove('hidden');
+          this.stopReadyTimer();
+          if (pauseOverlay) pauseOverlay.classList.remove('hidden');
         }
         return;
       } else {
         if (this.isEmergencyPaused) {
           this.isEmergencyPaused = false;
-          pauseOverlay.classList.add('hidden');
-          const isPlayVisible = !document.getElementById('quiz-view-play').classList.contains('hidden');
-          if (isPlayVisible && this.timeLeft > 0 && !this.isInfoPaused) {
-            this.startTimer();
-          }
+          if (pauseOverlay) pauseOverlay.classList.add('hidden');
+          if (this.currentState === 'playing' && this.timeLeft > 0) this.startTimer();
+          if (this.currentState === 'ready' && this.readyTimeLeft > 0) this.startReadyTimer();
         }
       }
 
-      // 2. 待機・機材調整中（非緊急）一時停止の検知
+      // 2. 機材調整待機（Info Pause）の監視
       const infoPauseOverlay = document.getElementById('info-pause-overlay');
       if (res.infoPaused) {
         if (!this.isInfoPaused) {
           this.isInfoPaused = true;
           this.stopTimer();
+          this.stopReadyTimer();
           if (infoPauseOverlay) infoPauseOverlay.classList.remove('hidden');
         }
         return;
@@ -170,97 +189,113 @@ const QuizApp = {
         if (this.isInfoPaused) {
           this.isInfoPaused = false;
           if (infoPauseOverlay) infoPauseOverlay.classList.add('hidden');
-          const isPlayVisible = !document.getElementById('quiz-view-play').classList.contains('hidden');
-          if (isPlayVisible && this.timeLeft > 0 && !this.isEmergencyPaused) {
-            this.startTimer();
-          }
+          if (this.currentState === 'playing' && this.timeLeft > 0) this.startTimer();
+          if (this.currentState === 'ready' && this.readyTimeLeft > 0) this.startReadyTimer();
         }
       }
 
-      // 3. パイプライン進行（一斉進行）の検知
-      const currentVer = res.pipelineVersion;
-      if (this.lastPipelineVersion !== null && currentVer > this.lastPipelineVersion) {
-        if (this.hasAnsweredCurrentGroup) {
-          this.showMoveView();
-          this.hasAnsweredCurrentGroup = false;
-        }
-      }
-      this.lastPipelineVersion = currentVer;
+      // 3. 自律分散ステートマシンの同期処理
+      const myData = res.statuses[this.roomKey];
+      if (!myData) return;
 
-      // 4. ブースの割当状態を確認
-      const myStatus = res.statuses[this.roomKey];
-      if (!myStatus) return;
-
-      const newGroupId = myStatus.groupId;
-      const assignedDiff = myStatus.difficulty || 'normal';
-      const customTime = myStatus.timeLimit || res.globalTimeLimit || 60;
-
-      if (newGroupId && newGroupId !== this.currentGroupId) {
-        this.currentGroupId = newGroupId;
-        this.currentDifficulty = assignedDiff;
-        this.hasAnsweredCurrentGroup = false;
-        this.missCount = 0;
-        this.onNewGroupArrived(customTime);
-      } else if (!newGroupId && this.currentGroupId) {
-        this.currentGroupId = null;
-        this.missCount = 0;
-        this.showWaitingView();
+      if (this.roomKey === 'room1') {
+        this.syncStateRoom1(myData, res.statuses);
+      } else if (this.roomKey === 'room2') {
+        this.syncStateRoom2(myData, res.statuses);
+      } else if (this.roomKey === 'room3') {
+        this.syncStateRoom3(myData, res.statuses);
       }
     } catch (e) {
-      console.error('Quiz polling error:', e);
+      console.warn('Polling check error:', e);
     }
   },
 
-  async onNewGroupArrived(customTime) {
-    document.getElementById('quiz-group-badge').textContent = `GROUP: ${this.currentGroupId}`;
-    const exBadge = document.getElementById('quiz-ex-badge');
-    if (this.currentDifficulty === 'ex') {
-      exBadge.classList.remove('hidden');
-    } else {
-      exBadge.classList.add('hidden');
+  // ==========================================
+  // Room 1 固有ステートマシン
+  // ==========================================
+
+  syncStateRoom1(myData, allStatuses) {
+    const serverStatus = myData.status;
+
+    // Room2が攻略中(playing)になったら、自身は初期画面(idle)へリセット
+    if (this.currentState === 'answered') {
+      const room2Status = allStatuses.room2 ? allStatuses.room2.status : 'idle';
+      if (room2Status === 'playing') {
+        this.currentGroupId = null;
+        this.renderState('idle');
+        return;
+      }
     }
 
-    this.startQuiz(this.currentDifficulty, customTime);
+    if (serverStatus === 'idle' && this.currentState !== 'idle') {
+      this.currentGroupId = null;
+      this.renderState('idle');
+    }
   },
 
-  showWaitingView() {
-    this.stopTimer();
-    document.getElementById('quiz-view-waiting').classList.remove('hidden');
-    document.getElementById('quiz-view-answered').classList.add('hidden');
-    document.getElementById('quiz-view-move').classList.add('hidden');
-    document.getElementById('quiz-view-play').classList.add('hidden');
+  /**
+   * Room 1: STARTボタン押下時
+   */
+  async handleRoom1Start() {
+    const btn = document.getElementById('btn-room1-start');
+    if (btn) btn.disabled = true;
+
+    try {
+      const res = await API.startRoom1();
+      if (res && res.success) {
+        this.currentGroupId = res.groupId;
+        this.updateGroupBadge(this.currentGroupId);
+        this.isExUnlocked = false;
+
+        const exBtn = document.getElementById('btn-symbol-ex');
+        if (exBtn) exBtn.classList.add('hidden');
+
+        // 難易度選択ステートへ遷移
+        this.renderState('select-diff');
+        this.startDifficultySelectTimer();
+      } else {
+        alert(res.error || '開始処理に失敗しました');
+      }
+    } catch (e) {
+      alert('通信エラーが発生しました。再度お試しください。');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   },
 
-  showAnsweredWaitingView() {
-    this.stopTimer();
-    document.getElementById('quiz-view-waiting').classList.add('hidden');
-    document.getElementById('quiz-view-answered').classList.remove('hidden');
-    document.getElementById('quiz-view-move').classList.add('hidden');
-    document.getElementById('quiz-view-play').classList.add('hidden');
+  startDifficultySelectTimer() {
+    this.readyTimeLeft = 30;
+    this.updateDiffSelectTimerDisplay();
+    this.stopReadyTimer();
+
+    this.readyTimerInterval = setInterval(() => {
+      if (this.isEmergencyPaused || this.isInfoPaused) return;
+
+      this.readyTimeLeft--;
+      this.updateDiffSelectTimerDisplay();
+
+      if (this.readyTimeLeft <= 0) {
+        this.stopReadyTimer();
+        // 30秒超過時は「簡単（▲ / easy）」を自動決定
+        this.selectDifficultyAndStart('easy', true);
+      }
+    }, 1000);
   },
 
-  showMoveView() {
-    this.stopTimer();
-    document.getElementById('quiz-view-waiting').classList.add('hidden');
-    document.getElementById('quiz-view-answered').classList.add('hidden');
-    document.getElementById('quiz-view-move').classList.remove('hidden');
-    document.getElementById('quiz-view-play').classList.add('hidden');
+  updateDiffSelectTimerDisplay() {
+    const elem = document.getElementById('diff-select-timer');
+    if (elem) {
+      elem.textContent = String(this.readyTimeLeft).padStart(2, '0');
+    }
   },
 
-  showPlayView() {
-    document.getElementById('quiz-view-waiting').classList.add('hidden');
-    document.getElementById('quiz-view-answered').classList.add('hidden');
-    document.getElementById('quiz-view-move').classList.add('hidden');
-    document.getElementById('quiz-view-play').classList.remove('hidden');
-  },
+  async selectDifficultyAndStart(diffSymbol, isAuto = false) {
+    this.stopReadyTimer();
+    this.currentDifficulty = diffSymbol;
 
-  async startQuiz(difficulty, customTime) {
-    this.hintsRevealedCount = 0;
-    this.missCount = 0;
-    this.updateMissCounterUI();
-
-    let candidates = this.cachedQuestions.filter(q => q.difficulty === difficulty);
-    if (difficulty === 'ex' && candidates.length === 0) {
+    // 問題選定
+    let candidates = this.cachedQuestions.filter(q => q.difficulty === diffSymbol);
+    if (diffSymbol === 'ex' && candidates.length === 0) {
       try {
         const exRes = await API.getQuestions('ex', 'ex');
         candidates = exRes.questions;
@@ -268,24 +303,179 @@ const QuizApp = {
     }
 
     if (candidates.length === 0) {
-      alert(`該当する問題データが存在しません [${difficulty}]`);
+      alert(`該当する問題データが存在しません [${diffSymbol}]`);
+      this.renderState('idle');
       return;
     }
 
     this.currentQuestion = candidates[Math.floor(Math.random() * candidates.length)];
-    this.renderQuestion();
-    this.showPlayView();
 
-    this.timeLeft = customTime || 60;
-    this.startTimer();
-
-    API.updateRoomStatus(this.roomKey, 'playing', this.currentQuestion.id, this.timeLeft);
+    try {
+      await API.confirmRoom1Difficulty(diffSymbol, this.currentQuestion.id);
+      this.startPlay();
+    } catch (e) {
+      alert('難易度確定の通信に失敗しました。');
+      this.renderState('idle');
+    }
   },
 
-  renderQuestion() {
-    document.getElementById('current-diff-tag').textContent = this.currentDifficulty.toUpperCase();
-    document.getElementById('quiz-q-id').textContent = this.currentQuestion.id;
-    document.getElementById('quiz-question-text').textContent = this.currentQuestion.question_text;
+  // ==========================================
+  // Room 2 固有ステートマシン
+  // ==========================================
+
+  syncStateRoom2(myData, allStatuses) {
+    const serverStatus = myData.status;
+
+    // 1. Idle状態: 前部屋(room1)からの信号待ち
+    if (serverStatus === 'idle' && this.currentState !== 'idle') {
+      this.currentGroupId = null;
+      this.renderState('idle');
+      return;
+    }
+
+    // 2. Ready状態: Room1からバトンを受け取った
+    if (serverStatus === 'ready' && this.currentState !== 'ready') {
+      this.currentGroupId = myData.groupId;
+      this.currentDifficulty = myData.difficulty || 'normal';
+      this.updateGroupBadge(this.currentGroupId);
+
+      this.renderState('ready');
+      this.startReadyCountdown(myData.timeLimit || 60);
+      return;
+    }
+
+    // 3. Answered状態: Room3の状態を監視して案内表示を切り替え
+    if (this.currentState === 'answered') {
+      const room3Status = allStatuses.room3 ? allStatuses.room3.status : 'idle';
+
+      // Room3がすでに攻略中(playing)になったら自身はリセット
+      if (room3Status === 'playing') {
+        this.currentGroupId = null;
+        this.renderState('idle');
+        return;
+      }
+
+      // Room3が攻略中なら待機案内、それ以外なら進行案内
+      const waitNotice = document.getElementById('quiz-view-answered-wait');
+      const moveNotice = document.getElementById('quiz-view-answered-move');
+      if (room3Status === 'playing') {
+        if (waitNotice) waitNotice.classList.remove('hidden');
+        if (moveNotice) moveNotice.classList.add('hidden');
+      } else {
+        if (waitNotice) waitNotice.classList.add('hidden');
+        if (moveNotice) moveNotice.classList.remove('hidden');
+      }
+    }
+  },
+
+  // ==========================================
+  // Room 3 固有ステートマシン
+  // ==========================================
+
+  syncStateRoom3(myData, allStatuses) {
+    const serverStatus = myData.status;
+
+    if (serverStatus === 'idle' && this.currentState !== 'idle') {
+      this.currentGroupId = null;
+      this.renderState('idle');
+      return;
+    }
+
+    if (serverStatus === 'ready' && this.currentState !== 'ready') {
+      this.currentGroupId = myData.groupId;
+      this.currentDifficulty = myData.difficulty || 'normal';
+      this.updateGroupBadge(this.currentGroupId);
+
+      this.renderState('ready');
+      this.startReadyCountdown(myData.timeLimit || 60);
+    }
+  },
+
+  // ==========================================
+  // Room 2 / Room 3 共通: 30秒カウントダウン (Ready)
+  // ==========================================
+
+  startReadyCountdown(customTimeLimit) {
+    this.readyTimeLeft = 30;
+    this.updateReadySevenSegment(this.readyTimeLeft);
+    this.stopReadyTimer();
+
+    this.readyTimerInterval = setInterval(() => {
+      if (this.isEmergencyPaused || this.isInfoPaused) return;
+
+      this.readyTimeLeft--;
+      this.updateReadySevenSegment(this.readyTimeLeft);
+
+      if (this.readyTimeLeft <= 0) {
+        this.stopReadyTimer();
+        this.confirmStartPlaying(customTimeLimit);
+      }
+    }, 1000);
+  },
+
+  stopReadyTimer() {
+    if (this.readyTimerInterval) {
+      clearInterval(this.readyTimerInterval);
+      this.readyTimerInterval = null;
+    }
+  },
+
+  updateReadySevenSegment(sec) {
+    const elem = document.getElementById('ready-seven-segment');
+    if (elem) {
+      elem.textContent = String(Math.max(0, sec)).padStart(2, '0');
+    }
+  },
+
+  async confirmStartPlaying(customTimeLimit) {
+    this.stopReadyTimer();
+
+    // 出題問題の選定
+    let candidates = this.cachedQuestions.filter(q => q.difficulty === this.currentDifficulty);
+    if (candidates.length === 0) {
+      candidates = this.cachedQuestions;
+    }
+    if (candidates.length === 0) {
+      alert('出題可能な問題データが見つかりません');
+      this.renderState('idle');
+      return;
+    }
+
+    this.currentQuestion = candidates[Math.floor(Math.random() * candidates.length)];
+
+    try {
+      await API.startRoomPlaying(this.roomKey, this.currentQuestion.id);
+      this.startPlay(customTimeLimit);
+    } catch (e) {
+      alert('攻略開始の同期に失敗しました。');
+    }
+  },
+
+  // ==========================================
+  // 出題・攻略ステート (Playing) 共通処理
+  // ==========================================
+
+  startPlay(customTime = 60) {
+    this.renderState('playing');
+    this.hintsRevealedCount = 0;
+    this.missCount = 0;
+    this.updateMissCounterUI();
+
+    this.renderQuestionData();
+
+    this.timeLeft = customTime;
+    this.startTimer();
+  },
+
+  renderQuestionData() {
+    const diffTag = document.getElementById('current-diff-tag');
+    if (diffTag) diffTag.textContent = this.currentDifficulty.toUpperCase();
+
+    const qIdElem = document.getElementById('quiz-q-id');
+    if (qIdElem) qIdElem.textContent = this.currentQuestion.id;
+
+    const qTextElem = document.getElementById('quiz-question-text');
+    if (qTextElem) qTextElem.textContent = this.currentQuestion.question_text;
 
     const mediaContainer = document.getElementById('quiz-media-container');
     mediaContainer.innerHTML = '';
@@ -301,7 +491,6 @@ const QuizApp = {
         video.controls = true;
         video.autoplay = true;
         video.className = 'quiz-media clickable-media';
-        video.title = 'タップで全画面表示';
         video.addEventListener('click', (e) => {
           e.stopPropagation();
           this.openMediaFullscreen(mediaUrl, true);
@@ -311,7 +500,6 @@ const QuizApp = {
         const img = document.createElement('img');
         img.src = mediaUrl;
         img.className = 'quiz-media clickable-media';
-        img.title = 'タップで全画面表示';
         img.addEventListener('click', () => {
           this.openMediaFullscreen(mediaUrl, false);
         });
@@ -323,12 +511,12 @@ const QuizApp = {
 
     const hintList = document.getElementById('hint-list');
     hintList.innerHTML = '<div class="hint-empty">開示された解析ヒントはありません</div>';
-    document.getElementById('btn-next-hint').disabled = false;
+    const hintBtn = document.getElementById('btn-next-hint');
+    if (hintBtn) hintBtn.disabled = false;
   },
 
   revealNextHint() {
     if (!this.currentQuestion || !this.currentQuestion.hints) return;
-
     const totalHints = this.currentQuestion.hints.length;
     if (this.hintsRevealedCount >= totalHints) return;
 
@@ -344,31 +532,29 @@ const QuizApp = {
     hintList.appendChild(hintItem);
 
     if (this.hintsRevealedCount >= totalHints) {
-      document.getElementById('btn-next-hint').disabled = true;
+      const hintBtn = document.getElementById('btn-next-hint');
+      if (hintBtn) hintBtn.disabled = true;
     }
   },
 
-  // 誤答カウントアップ処理（即終了させずペナルティ記録）
   handleWrongAttempt() {
     this.missCount++;
     this.updateMissCounterUI();
     this.triggerGlitchAlertEffect();
-    this.playAudioTone(220, 0.25, 'sawtooth'); // 不協和音ビープ
+    this.playAudioTone(220, 0.25, 'sawtooth');
   },
 
   updateMissCounterUI() {
-    const counterElem = document.getElementById('quiz-miss-counter');
-    if (counterElem) {
-      counterElem.textContent = this.missCount;
-    }
+    const counter = document.getElementById('quiz-miss-counter');
+    if (counter) counter.textContent = this.missCount;
   },
 
   triggerGlitchAlertEffect() {
     const playView = document.getElementById('quiz-view-play');
-    playView.classList.add('effect-wrong-shock');
-    setTimeout(() => {
-      playView.classList.remove('effect-wrong-shock');
-    }, 600);
+    if (playView) {
+      playView.classList.add('effect-wrong-shock');
+      setTimeout(() => playView.classList.remove('effect-wrong-shock'), 600);
+    }
   },
 
   startTimer() {
@@ -380,10 +566,6 @@ const QuizApp = {
 
       this.timeLeft--;
       this.updateTimerDisplay();
-
-      if (this.timeLeft % 5 === 0) {
-        API.updateRoomStatus(this.roomKey, 'playing', this.currentQuestion?.id, this.timeLeft);
-      }
 
       if (this.timeLeft <= 0) {
         this.stopTimer();
@@ -415,7 +597,6 @@ const QuizApp = {
     }
   },
 
-  // 時間切れ演出: CRITICAL BREACH
   async triggerCriticalBreachEffect() {
     this.playAudioTone(130, 0.8, 'square');
     const overlay = document.getElementById('effect-overlay-breach');
@@ -437,23 +618,12 @@ const QuizApp = {
       timeLeft: 0,
       missCount: this.missCount
     };
+
     try {
-      await API.submitAnswer(payload);
+      await API.submitRoomAnswer(payload);
     } catch (e) {}
 
-    this.hasAnsweredCurrentGroup = true;
-    this.showAnsweredWaitingView();
-  },
-
-  // 正解演出: SYSTEM PURGED
-  async triggerSystemPurgedEffect() {
-    this.playAudioTone(880, 0.4, 'sine');
-    const overlay = document.getElementById('effect-overlay-purged');
-    if (overlay) {
-      overlay.classList.remove('hidden');
-      await new Promise(r => setTimeout(r, 1800));
-      overlay.classList.add('hidden');
-    }
+    this.renderState('answered');
   },
 
   openJudgeModal(isCorrect) {
@@ -465,14 +635,14 @@ const QuizApp = {
     const miss = document.getElementById('modal-miss-count');
 
     if (isCorrect) {
-      title.innerHTML = '<span class="material-symbols-outlined icon-md icon-success">check_circle</span> 正解として記録';
-      title.style.color = '#22c55e';
+      title.innerHTML = '<span class="material-symbols-outlined icon-md text-success">check_circle</span> 正解として記録';
+      title.style.color = 'var(--signal-green)';
     } else {
-      title.innerHTML = '<span class="material-symbols-outlined icon-md icon-danger">cancel</span> 終了 / 不正解として記録';
-      title.style.color = '#ef4444';
+      title.innerHTML = '<span class="material-symbols-outlined icon-md text-danger">cancel</span> 終了 / 不正解として記録';
+      title.style.color = 'var(--signal-red)';
     }
 
-    answer.textContent = this.currentQuestion.answer || '--';
+    answer.textContent = this.currentQuestion ? (this.currentQuestion.answer || '--') : '--';
     time.textContent = Math.max(0, this.timeLeft);
     if (miss) miss.textContent = this.missCount;
 
@@ -493,34 +663,120 @@ const QuizApp = {
     submitBtn.disabled = true;
 
     if (isCorrect) {
-      await this.triggerSystemPurgedEffect();
+      this.playAudioTone(880, 0.4, 'sine');
+      const overlay = document.getElementById('effect-overlay-purged');
+      if (overlay) {
+        overlay.classList.remove('hidden');
+        await new Promise(r => setTimeout(r, 1600));
+        overlay.classList.add('hidden');
+      }
     }
 
     const payload = {
       groupId: this.currentGroupId,
       roomNumber: this.roomNumber,
       difficulty: this.currentDifficulty,
-      questionId: this.currentQuestion.id,
+      questionId: this.currentQuestion ? this.currentQuestion.id : '',
       isCorrect: isCorrect,
       timeLeft: Math.max(0, this.timeLeft),
       missCount: this.missCount
     };
 
     try {
-      const res = await API.submitAnswer(payload);
+      const res = await API.submitRoomAnswer(payload);
       if (res && res.success) {
         this.closeJudgeModal();
-        this.hasAnsweredCurrentGroup = true;
-        this.showAnsweredWaitingView();
+        this.renderState('answered');
+      } else {
+        alert('解答の記録に失敗しました。');
       }
     } catch (e) {
-      alert('通信に失敗しました。再試行してください。');
+      alert('通信エラーが発生しました。再度送信をお試しください。');
     } finally {
       submitBtn.disabled = false;
     }
   },
 
-  // 簡易サウンドジェネレータ（Web Audio API）
+  // ==========================================
+  // 画面ステート切り替え描画
+  // ==========================================
+
+  renderState(state) {
+    this.currentState = state;
+
+    const views = {
+      idle: document.getElementById('quiz-view-idle'),
+      selectDiff: document.getElementById('quiz-view-select-diff'),
+      ready: document.getElementById('quiz-view-ready'),
+      play: document.getElementById('quiz-view-play'),
+      answered: document.getElementById('quiz-view-answered')
+    };
+
+    // 全ビュー非表示
+    Object.values(views).forEach(v => {
+      if (v) v.classList.add('hidden');
+    });
+
+    if (state === 'idle') {
+      if (views.idle) views.idle.classList.remove('hidden');
+      this.renderIdleViewDetails();
+    } else if (state === 'select-diff') {
+      if (views.selectDiff) views.selectDiff.classList.remove('hidden');
+    } else if (state === 'ready') {
+      if (views.ready) views.ready.classList.remove('hidden');
+    } else if (state === 'playing') {
+      if (views.play) views.play.classList.remove('hidden');
+    } else if (state === 'answered') {
+      if (views.answered) views.answered.classList.remove('hidden');
+      this.renderAnsweredViewDetails();
+    }
+  },
+
+  renderIdleViewDetails() {
+    const idleRoom1 = document.getElementById('idle-room1-content');
+    const idleGlitch = document.getElementById('idle-glitch-content');
+
+    if (this.roomKey === 'room1') {
+      if (idleRoom1) idleRoom1.classList.remove('hidden');
+      if (idleGlitch) idleGlitch.classList.add('hidden');
+    } else {
+      if (idleRoom1) idleRoom1.classList.add('hidden');
+      if (idleGlitch) idleGlitch.classList.remove('hidden');
+    }
+    this.updateGroupBadge('--');
+  },
+
+  renderAnsweredViewDetails() {
+    const waitNotice = document.getElementById('quiz-view-answered-wait');
+    const moveNotice = document.getElementById('quiz-view-answered-move');
+
+    if (this.roomKey === 'room1' || this.roomKey === 'room3') {
+      if (waitNotice) waitNotice.classList.add('hidden');
+      if (moveNotice) moveNotice.classList.remove('hidden');
+    } else if (this.roomKey === 'room2') {
+      // Room2はcheckStatus内のポーリングで随時更新
+      if (waitNotice) waitNotice.classList.add('hidden');
+      if (moveNotice) moveNotice.classList.remove('hidden');
+    }
+  },
+
+  updateGroupBadge(groupId) {
+    const badge = document.getElementById('quiz-group-badge');
+    if (badge) badge.textContent = groupId ? `GROUP: ${groupId}` : '--';
+  },
+
+  async toggleBatteryAlert() {
+    this.isLowBattery = !this.isLowBattery;
+    const btn = document.getElementById('btn-battery-quiz');
+    if (btn) {
+      btn.classList.toggle('active', this.isLowBattery);
+      btn.innerHTML = this.isLowBattery
+        ? '<span class="material-symbols-outlined icon-sm">battery_alert</span> 給電要請'
+        : '<span class="material-symbols-outlined icon-sm">battery_alert</span> バッテリー';
+    }
+    await API.reportLowBattery(this.roomKey, this.isLowBattery);
+  },
+
   playAudioTone(freq, duration, type = 'sine') {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();

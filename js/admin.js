@@ -1,22 +1,22 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * admin.js - 入口／進行機
+ * admin.js - 入口／進行機（モニタリング専用ダッシュボード）
  */
 const AdminApp = {
   pollingTimer: null,
-  isAdvancing: false,
-  lastRoom1Group: null,
 
   init() {
     const savedRole = AppStorage.getRole();
 
     if (!savedRole) {
-      document.getElementById('role-select-screen').classList.remove('hidden');
+      const roleScreen = document.getElementById('role-select-screen');
+      if (roleScreen) roleScreen.classList.remove('hidden');
       return;
     }
 
     if (savedRole === CONFIG.ROLES.ENTRY) {
-      document.getElementById('admin-screen').classList.remove('hidden');
+      const adminScreen = document.getElementById('admin-screen');
+      if (adminScreen) adminScreen.classList.remove('hidden');
       this.startPolling();
     }
   },
@@ -46,38 +46,27 @@ const AdminApp = {
     const syncText = document.getElementById('sync-text');
 
     try {
-      syncDot.className = 'sync-dot syncing';
+      if (syncDot) syncDot.className = 'sync-dot syncing';
       const res = await API.getStatus();
 
       if (res && res.success) {
-        syncDot.className = 'sync-dot';
-        syncText.textContent = new Date().toLocaleTimeString();
+        if (syncDot) syncDot.className = 'sync-dot';
+        if (syncText) syncText.textContent = new Date().toLocaleTimeString();
 
-        // 1. 出口混雑アラートバナー
+        // 1. 出口混雑警報バナー
         const exitAlertBanner = document.getElementById('entry-exit-congested-alert');
         if (exitAlertBanner) {
-          if (res.isExitCongested) {
-            exitAlertBanner.classList.remove('hidden');
-          } else {
-            exitAlertBanner.classList.add('hidden');
-          }
+          exitAlertBanner.classList.toggle('hidden', !res.isExitCongested);
         }
 
-        // 2. 管理機からのペース指示バナー (WAIT / PUSH)
+        // 2. 管理機からのPACE指示バナー (WAIT / PUSH)
         this.renderPaceSignalBanner(res.paceSignal);
 
-        // 3. ブース状況の描画（canAdvanceはRoom1〜3のみでGAS側判定済み）
-        this.renderStatuses(res.statuses, res.canAdvance);
-
-        // 次グループID自動インクリメント補助
-        const r1Group = res.statuses.room1?.groupId;
-        if (r1Group && r1Group !== this.lastRoom1Group) {
-          this.lastRoom1Group = r1Group;
-          this.autoComputeNextGroupId(r1Group);
-        }
+        // 3. 各部屋のリアルタイムモニタリング表示
+        this.renderMonitoringDashboard(res.statuses);
       }
     } catch (error) {
-      syncDot.className = 'sync-dot error';
+      if (syncDot) syncDot.className = 'sync-dot error';
     }
   },
 
@@ -103,104 +92,76 @@ const AdminApp = {
     }
   },
 
-  renderStatuses(statuses, canAdvance) {
-    const rooms = ['room1', 'room2', 'room3'];
+  renderMonitoringDashboard(statuses) {
+    const rooms = [
+      { key: 'room1', name: 'NODE 1 [ALPHA]' },
+      { key: 'room2', name: 'NODE 2 [BETA]' },
+      { key: 'room3', name: 'NODE 3 [CORE]' }
+    ];
 
-    rooms.forEach(roomKey => {
-      const roomData = statuses[roomKey] || { status: 'unknown', groupId: '', isEx: false, lowBattery: false };
-      const card = document.getElementById(`card-${roomKey}`);
-      const groupBadge = document.getElementById(`group-${roomKey}`);
-      const statusLabel = document.getElementById(`status-label-${roomKey}`);
-      const batteryAlert = document.getElementById(`battery-${roomKey}`);
+    rooms.forEach(r => {
+      const b = statuses[r.key] || {
+        status: 'idle',
+        groupId: '',
+        difficulty: 'normal',
+        currentQuestionId: '',
+        timeLeft: 0,
+        lowBattery: false
+      };
+
+      const card = document.getElementById(`monitor-card-${r.key}`);
+      const groupBadge = document.getElementById(`monitor-group-${r.key}`);
+      const stateBadge = document.getElementById(`monitor-state-${r.key}`);
+      const diffElem = document.getElementById(`monitor-diff-${r.key}`);
+      const timerElem = document.getElementById(`monitor-timer-${r.key}`);
+      const batteryAlert = document.getElementById(`battery-${r.key}`);
 
       if (!card) return;
-      card.className = 'room-card';
 
-      if (roomData.status === 'ready') {
-        card.classList.add('status-ready');
-        statusLabel.textContent = '待機中 (READY)';
-      } else if (roomData.status === 'playing') {
-        card.classList.add('status-playing');
-        statusLabel.textContent = `攻略中 (${roomData.timeLeft || 0}s)`;
-      } else {
-        card.classList.add('status-unknown');
-        statusLabel.textContent = '未接続';
-      }
+      // カードのアクティブ枠線制御
+      card.className = `monitor-card card-state-${b.status}`;
 
       if (batteryAlert) {
-        if (roomData.lowBattery) {
-          batteryAlert.classList.remove('hidden');
+        batteryAlert.classList.toggle('hidden', !b.lowBattery);
+      }
+
+      if (groupBadge) {
+        groupBadge.textContent = b.groupId ? `${b.isEx ? '[EX] ' : ''}${b.groupId}` : '空室 (EMPTY)';
+      }
+
+      if (stateBadge) {
+        let stateText = '待機中 (IDLE)';
+        let stateClass = 'state-badge-idle';
+
+        if (b.status === 'ready') {
+          stateText = '準備中 (READY 30s)';
+          stateClass = 'state-badge-ready';
+        } else if (b.status === 'playing') {
+          stateText = '攻略中 (PLAYING)';
+          stateClass = 'state-badge-playing';
+        } else if (b.status === 'answered') {
+          stateText = '解答済・移動案内中';
+          stateClass = 'state-badge-answered';
+        }
+
+        stateBadge.className = `monitor-state-badge ${stateClass}`;
+        stateBadge.textContent = stateText;
+      }
+
+      if (diffElem) {
+        diffElem.textContent = b.groupId ? b.difficulty.toUpperCase() : '--';
+      }
+
+      if (timerElem) {
+        if (b.status === 'playing') {
+          timerElem.textContent = `${b.timeLeft} 秒`;
+        } else if (b.status === 'ready') {
+          timerElem.textContent = '30 秒準備中';
         } else {
-          batteryAlert.classList.add('hidden');
+          timerElem.textContent = '--';
         }
       }
-
-      if (roomData.groupId) {
-        const exPrefix = roomData.isEx ? '[EX] ' : '';
-        groupBadge.textContent = `${exPrefix}${roomData.groupId}`;
-      } else {
-        groupBadge.textContent = '--';
-      }
     });
-
-    // 進行ボタンの活性化制御
-    const advanceBtn = document.getElementById('btn-advance');
-    const warning = document.getElementById('advance-warning');
-
-    if (canAdvance && !this.isAdvancing) {
-      advanceBtn.disabled = false;
-      if (warning) warning.classList.add('hidden');
-    } else {
-      advanceBtn.disabled = true;
-      if (warning && !this.isAdvancing) warning.classList.remove('hidden');
-    }
-  },
-
-  autoComputeNextGroupId(currentR1GroupId) {
-    const nextInput = document.getElementById('next-group-id');
-    const match = currentR1GroupId.match(/^(.*?)(\d+)$/);
-    if (match) {
-      const prefix = match[1];
-      const num = parseInt(match[2], 10) + 1;
-      const padded = String(num).padStart(match[2].length, '0');
-      nextInput.value = `${prefix}${padded}`;
-    }
-  },
-
-  async triggerAdvance() {
-    if (this.isAdvancing) return;
-
-    const nextGroupId = document.getElementById('next-group-id').value.trim();
-    const diffRadio = document.querySelector('input[name="admin-diff"]:checked');
-    const selectedDifficulty = diffRadio ? diffRadio.value : 'normal';
-
-    if (!nextGroupId) {
-      alert('グループIDを入力してください');
-      return;
-    }
-
-    if (!confirm(`[ ${nextGroupId} ] (難易度: ${selectedDifficulty.toUpperCase()}) を投入してパイプラインを一斉進行しますか？`)) {
-      return;
-    }
-
-    this.isAdvancing = true;
-    const advanceBtn = document.getElementById('btn-advance');
-    advanceBtn.disabled = true;
-    advanceBtn.innerHTML = '<span class="material-symbols-outlined icon-md">sync</span> 進行処理・同期中...';
-
-    try {
-      const res = await API.advancePipeline(nextGroupId, selectedDifficulty);
-      if (res && res.success) {
-        await this.fetchStatus();
-      } else {
-        alert('進行エラー: ' + (res.error || '不明なエラー'));
-      }
-    } catch (error) {
-      alert('通信に失敗しました。電波状況を確認してください。');
-    } finally {
-      this.isAdvancing = false;
-      advanceBtn.innerHTML = '<span class="material-symbols-outlined icon-md">fast_forward</span> 全ブースを一斉進行';
-    }
   }
 };
 
