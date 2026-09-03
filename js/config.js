@@ -1,42 +1,65 @@
 /**
- * config.js - システム設定・定数定義
+ * PROJECT AI 〜人類最後のアップデートが始まる〜
+ * config.js - システム全体設定・定数マスタ
  */
 const CONFIG = {
-  // 1. Google Apps Script のデプロイURL
+  // 1. Google Apps Script デプロイURL（環境に合わせて書き換えてください）
   GAS_API_URL: 'https://script.google.com/macros/s/AKfycbyT2HilVPYZHSvOQML-cJ5YH5tGmtNBJoyBSfut7PXn7QOxT6QeoDGMEpCjQVFX38j7/exec',
 
-  // 2. 端末の役割定義 (計6種類)
+  // 2. 端末役割定義
   ROLES: {
-    ENTRY:   'entry',   // 入口進行機
+    ENTRY:   'entry',   // 入口 / 進行端末
     MANAGER: 'manager', // 管理者機 (バックヤード統括)
-    ROOM1:   'room1',   // 第1問機
-    ROOM2:   'room2',   // 第2問機
-    ROOM3:   'room3',   // 第3問機
-    EXIT:    'exit'     // 出口・リザルト機
+    ROOM1:   'room1',   // 第1問 ブース機 (AI中枢・第1障壁)
+    ROOM2:   'room2',   // 第2問 ブース機 (AI中枢・第2障壁)
+    ROOM3:   'room3',   // 第3問 ブース機 (AI中枢・最終防衛線)
+    EXIT:    'exit'     // 出口 / リザルト案内機
   },
 
   ROLE_NAMES: {
     entry:   '入口 / 進行機',
     manager: '管理者機 (バックヤード統括)',
-    room1:   '第1問 ブース',
-    room2:   '第2問 ブース',
-    room3:   '第3問 ブース',
+    room1:   '第1問 ブース [Alpha]',
+    room2:   '第2問 ブース [Beta]',
+    room3:   '第3問 ブース [Core]',
     exit:    '出口 / リザルト機'
   },
 
-  // 3. ブース（問題機）の設定
+  // 3. ブース番号マッピング
   ROOM_NUMBERS: {
     room1: 1,
     room2: 2,
     room3: 3
   },
 
-  // 4. 通信・ポーリング設定
-  POLLING_INTERVAL_MS: 3000,    // status監視ポーリング間隔 (3秒)
-  FETCH_TIMEOUT_MS: 10000,      // API通信タイムアウト (10秒)
-  MAX_RETRY_COUNT: 2,           // 通信失敗時の最大リトライ回数
+  // 4. スコア配点テーブル & ボーナス
+  SCORING: {
+    EASY: 10,
+    NORMAL: 20,
+    HARD: 30,
+    EX: 40,
+    PERFECT_BONUS: 30
+  },
 
-  // 5. ストレージキー名
+  // 5. ペースコントロールシグナル
+  PACE_SIGNALS: {
+    NONE: 'none',
+    WAIT: 'wait', // 進行待機（混雑等）
+    PUSH: 'push'  // 巻き・進行促進
+  },
+
+  // 6. 通信・タイマー設定
+  POLLING_INTERVAL_MS: 3000,    // ステータス監視（3秒）
+  FETCH_TIMEOUT_MS: 10000,      // 通信タイムアウト（10秒）
+
+  // 7. 演出・グリッチ強度定義
+  GLITCH_CLASSES: {
+    room1: 'glitch-low',
+    room2: 'glitch-mid',
+    room3: 'glitch-high'
+  },
+
+  // 8. ローカルストレージキー名
   STORAGE_KEYS: {
     ROLE: 'festival_app_role',
     CURRENT_STATE: 'festival_app_current_state',
@@ -48,4 +71,7 @@ Object.freeze(CONFIG);
 Object.freeze(CONFIG.ROLES);
 Object.freeze(CONFIG.ROLE_NAMES);
 Object.freeze(CONFIG.ROOM_NUMBERS);
+Object.freeze(CONFIG.SCORING);
+Object.freeze(CONFIG.PACE_SIGNALS);
+Object.freeze(CONFIG.GLITCH_CLASSES);
 Object.freeze(CONFIG.STORAGE_KEYS);

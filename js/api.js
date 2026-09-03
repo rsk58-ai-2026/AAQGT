@@ -1,10 +1,15 @@
 /**
+ * PROJECT AI 〜人類最後のアップデートが始まる〜
  * api.js - 通信レイヤー
  */
 const API = {
   async get(params = {}) {
     const url = new URL(CONFIG.GAS_API_URL);
-    Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+    Object.keys(params).forEach(key => {
+      if (params[key] !== undefined && params[key] !== null) {
+        url.searchParams.append(key, params[key]);
+      }
+    });
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), CONFIG.FETCH_TIMEOUT_MS);
@@ -42,6 +47,11 @@ const API = {
     }
   },
 
+  // --- 共通・データ取得API ---
+  async getStatus() {
+    return await this.get({ action: 'getStatus' });
+  },
+
   async getQuestions(room = '', difficulty = '') {
     const params = { action: 'getQuestions' };
     if (room) params.room = room;
@@ -49,14 +59,15 @@ const API = {
     return await this.get(params);
   },
 
-  async getStatus() {
-    return await this.get({ action: 'getStatus' });
-  },
-
   async getGroupResult(groupId) {
     return await this.get({ action: 'getGroupResult', groupId: groupId });
   },
 
+  async getPendingResults() {
+    return await this.get({ action: 'getPendingResults' });
+  },
+
+  // --- 端末ステータス更新 ---
   async updateRoomStatus(roomKey, status, questionId, timeLeft, lastJudge) {
     return await this.post({
       action: 'updateRoomStatus',
@@ -72,10 +83,11 @@ const API = {
     return await this.post({
       action: 'reportLowBattery',
       roomKey: roomKey,
-      lowBattery: isLow
+      lowBattery: !!isLow
     });
   },
 
+  // --- クイズ回答送信 ---
   async submitAnswer(resultData) {
     return await this.post({
       action: 'submitAnswer',
@@ -83,6 +95,7 @@ const API = {
     });
   },
 
+  // --- 入口進行・パイプラインシフト ---
   async advancePipeline(newGroupId, difficulty) {
     return await this.post({
       action: 'advancePipeline',
@@ -91,7 +104,36 @@ const API = {
     });
   },
 
-  // --- 管理者専用API ---
+  // --- 出口機専用API ---
+  async finishGroupResult(groupId) {
+    return await this.post({
+      action: 'finishGroupResult',
+      groupId: groupId
+    });
+  },
+
+  async reportExitCongestion(isCongested) {
+    return await this.post({
+      action: 'reportExitCongestion',
+      isCongested: !!isCongested
+    });
+  },
+
+  // --- 管理機専用API ---
+  async setPaceSignal(paceSignal) {
+    return await this.post({
+      action: 'setPaceSignal',
+      paceSignal: paceSignal
+    });
+  },
+
+  async toggleInfoPause(isPaused) {
+    return await this.post({
+      action: 'toggleInfoPause',
+      isPaused: !!isPaused
+    });
+  },
+
   async setGlobalTimeLimit(timeLimit) {
     return await this.post({
       action: 'setGlobalTimeLimit',
@@ -102,7 +144,7 @@ const API = {
   async toggleEmergencyPause(isPaused) {
     return await this.post({
       action: 'toggleEmergencyPause',
-      isPaused: isPaused
+      isPaused: !!isPaused
     });
   },
 

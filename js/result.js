@@ -1,9 +1,12 @@
 /**
- * result.js - 出口／リザルト端末
+ * PROJECT AI 〜人類最後のアップデートが始まる〜
+ * result.js - 出口／リザルト機（独立保留キュー式）
  */
 const ResultApp = {
   pollingTimer: null,
-  currentGroupId: null,
+  activeGroupId: null,
+  pendingList: [],
+  isCongested: false,
   isLowBattery: false,
   EX_SECRET_KEYWORD: 'フェニックス',
 
@@ -36,67 +39,119 @@ const ResultApp = {
       if (document.visibilityState === 'hidden') {
         notifyExit();
       } else if (document.visibilityState === 'visible') {
-        API.updateRoomStatus('exit', this.currentGroupId ? 'playing' : 'ready');
+        API.updateRoomStatus('exit', this.activeGroupId ? 'playing' : 'ready');
       }
     });
+  },
+
+  async toggleCongestionAlert() {
+    this.isCongested = !this.isCongested;
+    const btn = document.getElementById('btn-exit-congestion');
+    if (btn) {
+      btn.classList.toggle('btn-danger', this.isCongested);
+      btn.classList.toggle('btn-secondary', !this.isCongested);
+      btn.innerHTML = this.isCongested
+        ? '<span class="material-symbols-outlined icon-sm">warning</span> 出口混雑中 [警報中]'
+        : '<span class="material-symbols-outlined icon-sm">group</span> 出口混雑を報告';
+    }
+    await API.reportExitCongestion(this.isCongested);
   },
 
   async toggleBatteryAlert() {
     this.isLowBattery = !this.isLowBattery;
     const btn = document.getElementById('btn-battery-result');
     btn.classList.toggle('active', this.isLowBattery);
-    btn.innerHTML = this.isLowBattery 
-      ? '<span class="material-symbols-outlined icon-sm">battery_alert</span> 充電低下 報告中' 
-      : '<span class="material-symbols-outlined icon-sm">battery_alert</span> 充電低下';
+    btn.innerHTML = this.isLowBattery
+      ? '<span class="material-symbols-outlined icon-sm">battery_alert</span> 給電要請'
+      : '<span class="material-symbols-outlined icon-sm">battery_alert</span> バッテリー';
     await API.reportLowBattery('exit', this.isLowBattery);
   },
 
   startPolling() {
-    this.checkStatus();
+    this.fetchPendingQueue();
     if (this.pollingTimer) clearInterval(this.pollingTimer);
-    this.pollingTimer = setInterval(() => this.checkStatus(), CONFIG.POLLING_INTERVAL_MS);
+    this.pollingTimer = setInterval(() => this.fetchPendingQueue(), CONFIG.POLLING_INTERVAL_MS);
   },
 
-  async checkStatus() {
+  async fetchPendingQueue() {
     try {
-      const res = await API.getStatus();
-      if (!res || !res.success) return;
-
-      const exitStatus = res.statuses['exit'];
-      if (!exitStatus) return;
-
-      const newGroupId = exitStatus.groupId;
-      if (newGroupId && newGroupId !== this.currentGroupId) {
-        this.currentGroupId = newGroupId;
-        await this.loadAndShowResult(newGroupId);
-      } else if (!newGroupId && this.currentGroupId) {
-        this.currentGroupId = null;
-        this.showWaitingView();
+      const res = await API.getPendingResults();
+      if (res && res.success) {
+        this.pendingList = res.pendingResults || [];
+        this.renderQueueRack();
       }
     } catch (e) {
-      console.error('Result polling error:', e);
+      console.error('Pending queue fetch error:', e);
     }
   },
 
-  async loadAndShowResult(groupId) {
-    this.showLoadingView(groupId);
+  renderQueueRack() {
+    const rack = document.getElementById('pending-queue-rack');
+    const badgeCount = document.getElementById('pending-count-badge');
+    if (!rack) return;
+
+    if (badgeCount) badgeCount.textContent = `${this.pendingList.length}組`;
+
+    rack.innerHTML = '';
+    if (this.pendingList.length === 0) {
+      rack.innerHTML = '<div class="queue-empty-msg">到着待ちグループはありません</div>';
+      if (!this.activeGroupId) {
+        this.showWaitingView();
+      }
+      return;
+    }
+
+    this.pendingList.forEach(item => {
+      const card = document.createElement('button');
+      card.className = `queue-chip ${this.activeGroupId === item.groupId ? 'active' : ''}`;
+      card.innerHTML = `
+        <span class="chip-group-id">${item.groupId}</span>
+        <span class="chip-score">${item.totalScore}点</span>
+        ${item.exQualified ? '<span class="chip-ex-tag">EX</span>' : ''}
+      `;
+      card.onclick = () => this.selectGroupResult(item.groupId);
+      rack.appendChild(card);
+    });
+  },
+
+  async selectGroupResult(groupId) {
+    this.activeGroupId = groupId;
+    this.renderQueueRack();
+    this.showLoadingView();
 
     try {
       await API.updateRoomStatus('exit', 'playing');
       const res = await API.getGroupResult(groupId);
       if (res && res.success) {
-        this.renderResult(res.result);
+        this.renderResultDetail(res.result);
       } else {
+        alert('成績データの取得に失敗しました');
         this.showWaitingView();
       }
     } catch (e) {
+      alert('通信エラーが発生しました');
       this.showWaitingView();
     }
   },
 
-  renderResult(data) {
+  renderResultDetail(data) {
     document.getElementById('result-group-id').textContent = data.groupId;
-    
+
+    // スコア・統計表示
+    const scoreVal = document.getElementById('result-total-score');
+    if (scoreVal) scoreVal.textContent = data.totalScore;
+
+    const missVal = document.getElementById('result-total-misses');
+    if (missVal) missVal.textContent = data.totalMisses;
+
+    // パーフェクトボーナス獲得判定 (全問正解)
+    const isPerfect = data.q1.isCorrect && data.q2.isCorrect && data.q3.isCorrect;
+    const bonusBadge = document.getElementById('result-bonus-badge');
+    if (bonusBadge) {
+      bonusBadge.classList.toggle('hidden', !isPerfect);
+    }
+
+    // EXバナー制御
     const exBanner = document.getElementById('result-ex-banner');
     const normalBanner = document.getElementById('result-normal-banner');
 
@@ -109,6 +164,7 @@ const ResultApp = {
       normalBanner.classList.remove('hidden');
     }
 
+    // 各問題の詳細カード
     const questions = [
       { key: 'q1', num: 1, info: data.q1 },
       { key: 'q2', num: 2, info: data.q2 },
@@ -128,34 +184,49 @@ const ResultApp = {
           <span class="result-q-title">第${q.num}問 (${q.info.difficulty.toUpperCase()})</span>
           <span class="result-judge-badge ${isCorrect ? 'badge-correct' : 'badge-wrong'}">
             <span class="material-symbols-outlined icon-xs">${isCorrect ? 'check_circle' : 'cancel'}</span>
-            ${isCorrect ? '正解' : '不正解'}
+            ${isCorrect ? '正解 [クリア]' : '不正解 [突破失敗]'}
           </span>
         </div>
         <div class="result-card-body">
-          <p class="result-q-answer">解答: <span class="text-highlight">${q.info.answer || '--'}</span></p>
+          <p class="result-q-answer">模範解答: <span class="text-highlight font-bold">${q.info.answer || '--'}</span></p>
           ${q.info.explanation ? `<p class="result-q-exp">${q.info.explanation}</p>` : ''}
-          <div class="result-q-time">残り時間: ${q.info.timeLeft || 0}秒</div>
+          <div class="result-q-stats-row">
+            <span>残り時間: <strong class="font-mono">${q.info.timeLeft || 0}秒</strong></span>
+            <span>誤答ペナルティ: <strong class="text-warning font-mono">${q.info.missCount || 0}回</strong></span>
+          </div>
         </div>
       `;
       container.appendChild(card);
     });
 
-    this.showContentVIew();
+    this.showContentView();
   },
 
-  async finishAndReady() {
+  async finishAndDismissCurrentGroup() {
+    if (!this.activeGroupId) return;
+
     const btn = document.getElementById('btn-finish-result');
     btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined icon-md">sync</span> 案内完了処理中...';
+
+    const targetId = this.activeGroupId;
 
     try {
-      const res = await API.updateRoomStatus('exit', 'ready');
+      const res = await API.finishGroupResult(targetId);
       if (res && res.success) {
+        // キューから除外してリセット
+        this.pendingList = this.pendingList.filter(item => item.groupId !== targetId);
+        this.activeGroupId = null;
+        this.renderQueueRack();
         this.showWaitingView();
+      } else {
+        alert('退室完了処理に失敗しました');
       }
     } catch (e) {
-      alert('通信エラー');
+      alert('通信エラーが発生しました');
     } finally {
       btn.disabled = false;
+      btn.innerHTML = '<span class="material-symbols-outlined icon-md">check</span> 案内完了・退室（キューから除外）';
     }
   },
 
@@ -165,13 +236,13 @@ const ResultApp = {
     document.getElementById('result-view-content').classList.add('hidden');
   },
 
-  showLoadingView(groupId) {
+  showLoadingView() {
     document.getElementById('result-view-waiting').classList.add('hidden');
     document.getElementById('result-view-loading').classList.remove('hidden');
     document.getElementById('result-view-content').classList.add('hidden');
   },
 
-  showContentVIew() {
+  showContentView() {
     document.getElementById('result-view-waiting').classList.add('hidden');
     document.getElementById('result-view-loading').classList.add('hidden');
     document.getElementById('result-view-content').classList.remove('hidden');
