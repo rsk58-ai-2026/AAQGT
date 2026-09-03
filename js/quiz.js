@@ -132,7 +132,7 @@ const QuizApp = {
     if (exBtn) {
       exBtn.classList.remove('hidden');
       exBtn.classList.add('anim-slide-up');
-      this.playAudioTone(950, 0.3, 'sawtooth');
+      this.playStartupChime();
     }
   },
 
@@ -237,11 +237,23 @@ const QuizApp = {
   },
 
   /**
-   * Room 1: STARTボタン押下時
+   * Room 1: STARTボタン押下時 (即時フィードバック & ローディング演出)
    */
   async handleRoom1Start() {
     const btn = document.getElementById('btn-room1-start');
-    if (btn) btn.disabled = true;
+    if (!btn || btn.classList.contains('is-loading')) return;
+
+    // ① 0秒フィードバック: サイバー起動音 + 起動フラッシュ
+    this.playStartupChime();
+    this.triggerCyberBurstFlash();
+
+    // ② ボタンのローディング状態化（収縮・ネオン激発光・高速スピナー・点滅テキスト）
+    btn.disabled = true;
+    btn.classList.add('is-loading');
+    btn.innerHTML = `
+      <span class="giant-start-icon material-symbols-outlined icon-spin">sync</span>
+      <span class="giant-start-text">CONNECTING...</span>
+    `;
 
     try {
       const res = await API.startRoom1();
@@ -258,11 +270,23 @@ const QuizApp = {
         this.startDifficultySelectTimer();
       } else {
         alert(res.error || '開始処理に失敗しました');
+        this.resetRoom1StartButton();
       }
     } catch (e) {
       alert('通信エラーが発生しました。再度お試しください。');
-    } finally {
-      if (btn) btn.disabled = false;
+      this.resetRoom1StartButton();
+    }
+  },
+
+  resetRoom1StartButton() {
+    const btn = document.getElementById('btn-room1-start');
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('is-loading');
+      btn.innerHTML = `
+        <span class="giant-start-icon material-symbols-outlined">power_settings_new</span>
+        <span class="giant-start-text">MISSION START</span>
+      `;
     }
   },
 
@@ -296,6 +320,14 @@ const QuizApp = {
     this.stopReadyTimer();
     this.currentDifficulty = diffSymbol;
 
+    const confirmBtn = document.getElementById('btn-confirm-diff');
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.classList.add('is-loading');
+      confirmBtn.innerHTML = '<span class="material-symbols-outlined icon-md icon-spin">sync</span> 展開中...';
+      this.playStartupChime();
+    }
+
     // 問題選定
     let candidates = this.cachedQuestions.filter(q => q.difficulty === diffSymbol);
     if (diffSymbol === 'ex' && candidates.length === 0) {
@@ -307,6 +339,7 @@ const QuizApp = {
 
     if (candidates.length === 0) {
       alert(`該当する問題データが存在しません [${diffSymbol}]`);
+      this.resetConfirmDiffButton();
       this.renderState('idle');
       return;
     }
@@ -318,7 +351,17 @@ const QuizApp = {
       this.startPlay();
     } catch (e) {
       alert('難易度確定の通信に失敗しました。');
+      this.resetConfirmDiffButton();
       this.renderState('idle');
+    }
+  },
+
+  resetConfirmDiffButton() {
+    const confirmBtn = document.getElementById('btn-confirm-diff');
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.classList.remove('is-loading');
+      confirmBtn.innerHTML = '<span class="material-symbols-outlined icon-md">play_arrow</span> 決定して開始';
     }
   },
 
@@ -402,6 +445,7 @@ const QuizApp = {
     this.readyTimeLeft = 30;
     this.updateReadySevenSegment(this.readyTimeLeft);
     this.stopReadyTimer();
+    this.resetReadyStartButton();
 
     this.readyTimerInterval = setInterval(() => {
       if (this.isEmergencyPaused || this.isInfoPaused) return;
@@ -430,8 +474,19 @@ const QuizApp = {
     }
   },
 
-  async confirmStartPlaying(customTimeLimit) {
+  async confirmStartPlaying(customTimeLimit = 60) {
     this.stopReadyTimer();
+
+    // 即時フィードバック: 効果音 + 起動フラッシュ + ボタン状態
+    this.playStartupChime();
+    this.triggerCyberBurstFlash();
+
+    const readyBtn = document.querySelector('.btn-ready-start');
+    if (readyBtn) {
+      readyBtn.disabled = true;
+      readyBtn.classList.add('is-loading');
+      readyBtn.innerHTML = '<span class="material-symbols-outlined icon-lg icon-spin">sync</span> 起動中...';
+    }
 
     // 出題問題の選定
     let candidates = this.cachedQuestions.filter(q => q.difficulty === this.currentDifficulty);
@@ -440,6 +495,7 @@ const QuizApp = {
     }
     if (candidates.length === 0) {
       alert('出題可能な問題データが見つかりません');
+      this.resetReadyStartButton();
       this.renderState('idle');
       return;
     }
@@ -451,6 +507,16 @@ const QuizApp = {
       this.startPlay(customTimeLimit);
     } catch (e) {
       alert('攻略開始の同期に失敗しました。');
+      this.resetReadyStartButton();
+    }
+  },
+
+  resetReadyStartButton() {
+    const readyBtn = document.querySelector('.btn-ready-start');
+    if (readyBtn) {
+      readyBtn.disabled = false;
+      readyBtn.classList.remove('is-loading');
+      readyBtn.innerHTML = '<span class="material-symbols-outlined icon-lg">play_circle</span> 開始 (START)';
     }
   },
 
@@ -723,20 +789,19 @@ const QuizApp = {
 
     if (state === 'idle') {
       if (this.roomKey === 'room1') {
-        // Room 1 専用：巨大スタート画面のみ表示
+        this.resetRoom1StartButton();
         if (views.room1Start) views.room1Start.classList.remove('hidden');
       } else {
-        // Room 2 / Room 3 専用：絶対にスタート画面は出さず、必ずサイバーグリッチ待機画面のみ表示
         if (views.glitchStandby) views.glitchStandby.classList.remove('hidden');
       }
       this.updateGroupBadge('--');
     } else if (state === 'select-diff') {
-      // Room 1 専用：難易度選択画面
+      this.resetConfirmDiffButton();
       if (this.roomKey === 'room1' && views.selectDiff) {
         views.selectDiff.classList.remove('hidden');
       }
     } else if (state === 'ready') {
-      // Room 2 / Room 3 専用：30秒カウントダウン画面
+      this.resetReadyStartButton();
       if ((this.roomKey === 'room2' || this.roomKey === 'room3') && views.ready) {
         views.ready.classList.remove('hidden');
       }
@@ -758,7 +823,6 @@ const QuizApp = {
       if (waitNotice) waitNotice.classList.add('hidden');
       if (moveNotice) moveNotice.classList.remove('hidden');
     } else if (this.roomKey === 'room2') {
-      // Room2はcheckStatus内のポーリングで随時更新
       if (waitNotice) waitNotice.classList.add('hidden');
       if (moveNotice) moveNotice.classList.remove('hidden');
     }
@@ -781,6 +845,10 @@ const QuizApp = {
     await API.reportLowBattery(this.roomKey, this.isLowBattery);
   },
 
+  // ==========================================
+  // サウンド & サイバー視覚演出ヘルパー
+  // ==========================================
+
   playAudioTone(freq, duration, type = 'sine') {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -788,13 +856,60 @@ const QuizApp = {
       const gain = ctx.createGain();
       osc.type = type;
       osc.frequency.setValueAtTime(freq, ctx.currentTime);
-      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + duration);
     } catch (e) {}
+  },
+
+  /**
+   * 起動・接続時の高音ピピッ！音
+   */
+  playStartupChime() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const now = ctx.currentTime;
+
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(1320, now);
+      gain1.gain.setValueAtTime(0.2, now);
+      gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.08);
+
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(1760, now + 0.09);
+      gain2.gain.setValueAtTime(0.25, now + 0.09);
+      gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.09);
+      osc2.stop(now + 0.22);
+    } catch (e) {
+      this.playAudioTone(1500, 0.15, 'sine');
+    }
+  },
+
+  /**
+   * 画面全体に一瞬走るサイバーバースト（起動フラッシュ）
+   */
+  triggerCyberBurstFlash() {
+    document.body.classList.remove('cyber-burst-active');
+    // リフロー強制でアニメーションを確実に再トリガー
+    void document.body.offsetWidth;
+    document.body.classList.add('cyber-burst-active');
+    setTimeout(() => {
+      document.body.classList.remove('cyber-burst-active');
+    }, 450);
   }
 };
 
