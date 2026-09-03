@@ -608,6 +608,7 @@
       </div>
 
       <!-- 先にお進みください案内 (Room 1, Room 3, およびRoom 2開放時) -->
+      <!-- 先にお進みください案内 (Room 1, Room 3, およびRoom 2開放時) -->
       <div id="quiz-view-answered-move" class="card move-card text-center cyber-border-accent hidden">
         <div class="move-icon">
           <span class="material-symbols-outlined icon-hero">directions_walk</span>
@@ -617,6 +618,12 @@
         <div class="move-arrow-anim">
           <span class="material-symbols-outlined icon-xl">arrow_downward</span>
         </div>
+
+        <!-- ▼▼▼ ここを追加 ▼▼▼ -->
+        <div id="room3-auto-reset-notice" class="auto-reset-notice hidden font-cyber">
+          ※ <span id="room3-reset-timer-val" class="font-mono text-warning font-bold">30</span> 秒後に自動でスタンバイ画面に戻ります
+        </div>
+        <!-- ▲▲▲ ここまで ▲▲▲ -->
       </div>
     </div>
 

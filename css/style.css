@@ -1924,3 +1924,25 @@ body.cyber-burst-active::after {
     filter: brightness(1);
   }
 }
+
+/* ==========================================================================
+   Room 3 解答後 自動スタンバイ復帰カウントダウン通知
+   ========================================================================== */
+.auto-reset-notice {
+  margin-top: 24px;
+  font-size: 14px;
+  color: #94a3b8;
+  background: rgba(5, 8, 19, 0.75);
+  padding: 8px 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  display: inline-block;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+  animation: fadeIn 0.4s ease;
+}
+
+.auto-reset-notice strong,
+.auto-reset-notice span {
+  font-size: 18px;
+  color: #fbbf24;
+}

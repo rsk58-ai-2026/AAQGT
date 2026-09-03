@@ -20,6 +20,10 @@ const QuizApp = {
   readyTimeLeft: 30,
   readyTimerInterval: null,
 
+  // Room 3 解答後 30秒自動スタンバイ復帰タイマー
+  room3AutoResetTimer: null,
+  room3AutoResetTimeLeft: 30,
+
   // UI・通信フラグ
   isLowBattery: false,
   isEmergencyPaused: false,
@@ -60,6 +64,7 @@ const QuizApp = {
 
   setupExitListeners() {
     const notifyExit = () => {
+      this.stopRoom3AutoResetCountdown();
       const payload = JSON.stringify({
         action: 'updateRoomStatus',
         roomKey: this.roomKey,
@@ -166,6 +171,7 @@ const QuizApp = {
           this.isEmergencyPaused = true;
           this.stopTimer();
           this.stopReadyTimer();
+          this.stopRoom3AutoResetCountdown();
           if (pauseOverlay) pauseOverlay.classList.remove('hidden');
         }
         return;
@@ -185,6 +191,7 @@ const QuizApp = {
           this.isInfoPaused = true;
           this.stopTimer();
           this.stopReadyTimer();
+          this.stopRoom3AutoResetCountdown();
           if (infoPauseOverlay) infoPauseOverlay.classList.remove('hidden');
         }
         return;
@@ -243,11 +250,9 @@ const QuizApp = {
     const btn = document.getElementById('btn-room1-start');
     if (!btn || btn.classList.contains('is-loading')) return;
 
-    // ① 0秒フィードバック: サイバー起動音 + 起動フラッシュ
     this.playStartupChime();
     this.triggerCyberBurstFlash();
 
-    // ② ボタンのローディング状態化（収縮・ネオン激発光・高速スピナー・点滅テキスト）
     btn.disabled = true;
     btn.classList.add('is-loading');
     btn.innerHTML = `
@@ -421,20 +426,70 @@ const QuizApp = {
   syncStateRoom3(myData, allStatuses) {
     const serverStatus = myData.status;
 
-    if (serverStatus === 'idle' && this.currentState !== 'idle') {
-      this.currentGroupId = null;
-      this.renderState('idle');
-      return;
-    }
-
+    // 次のグループからReadyを受信した場合は、30秒自動リセットタイマーを即座に破棄してReadyへ遷移
     if (serverStatus === 'ready' && this.currentState !== 'ready') {
+      this.stopRoom3AutoResetCountdown();
       this.currentGroupId = myData.groupId;
       this.currentDifficulty = myData.difficulty || 'normal';
       this.updateGroupBadge(this.currentGroupId);
 
       this.renderState('ready');
       this.startReadyCountdown(myData.timeLimit || 60);
+      return;
     }
+
+    if (serverStatus === 'idle' && this.currentState !== 'idle') {
+      this.stopRoom3AutoResetCountdown();
+      this.currentGroupId = null;
+      this.renderState('idle');
+    }
+  },
+
+  // ==========================================
+  // Room 3 解答後 30秒自動スタンバイ復帰タイマー処理
+  // ==========================================
+
+  startRoom3AutoResetCountdown() {
+    this.stopRoom3AutoResetCountdown();
+    this.room3AutoResetTimeLeft = 30;
+
+    const noticeElem = document.getElementById('room3-auto-reset-notice');
+    const timerElem = document.getElementById('room3-reset-timer-val');
+
+    if (noticeElem) noticeElem.classList.remove('hidden');
+    if (timerElem) timerElem.textContent = this.room3AutoResetTimeLeft;
+
+    this.room3AutoResetTimer = setInterval(async () => {
+      // 一時停止中はカウントを停止
+      if (this.isEmergencyPaused || this.isInfoPaused) return;
+
+      this.room3AutoResetTimeLeft--;
+      if (timerElem) timerElem.textContent = Math.max(0, this.room3AutoResetTimeLeft);
+
+      if (this.room3AutoResetTimeLeft <= 0) {
+        this.stopRoom3AutoResetCountdown();
+
+        // 30秒経過: 自身をidle（サイバーグリッチ待機）へリセット
+        this.currentGroupId = null;
+        this.renderState('idle');
+
+        // サーバー（GAS）へもidle通知を送信して空室同期
+        try {
+          await API.updateRoomStatus(this.roomKey, 'idle');
+        } catch (e) {
+          console.warn('Room3 auto-reset status update error:', e);
+        }
+      }
+    }, 1000);
+  },
+
+  stopRoom3AutoResetCountdown() {
+    if (this.room3AutoResetTimer) {
+      clearInterval(this.room3AutoResetTimer);
+      this.room3AutoResetTimer = null;
+    }
+    const noticeElem = document.getElementById('room3-auto-reset-notice');
+    if (noticeElem) noticeElem.classList.add('hidden');
   },
 
   // ==========================================
@@ -477,7 +532,6 @@ const QuizApp = {
   async confirmStartPlaying(customTimeLimit = 60) {
     this.stopReadyTimer();
 
-    // 即時フィードバック: 効果音 + 起動フラッシュ + ボタン状態
     this.playStartupChime();
     this.triggerCyberBurstFlash();
 
@@ -773,6 +827,11 @@ const QuizApp = {
   renderState(state) {
     this.currentState = state;
 
+    // answered 以外に遷移した場合は Room 3 の自動リセットタイマーを停止
+    if (state !== 'answered') {
+      this.stopRoom3AutoResetCountdown();
+    }
+
     const views = {
       room1Start: document.getElementById('quiz-view-room1-start'),
       glitchStandby: document.getElementById('quiz-view-glitch-standby'),
@@ -819,12 +878,17 @@ const QuizApp = {
     const waitNotice = document.getElementById('quiz-view-answered-wait');
     const moveNotice = document.getElementById('quiz-view-answered-move');
 
-    if (this.roomKey === 'room1' || this.roomKey === 'room3') {
+    if (this.roomKey === 'room1') {
       if (waitNotice) waitNotice.classList.add('hidden');
       if (moveNotice) moveNotice.classList.remove('hidden');
     } else if (this.roomKey === 'room2') {
       if (waitNotice) waitNotice.classList.add('hidden');
       if (moveNotice) moveNotice.classList.remove('hidden');
+    } else if (this.roomKey === 'room3') {
+      // Room 3 は即座に進行案内を表示し、30秒自動スタンバイ復帰タイマーを開始
+      if (waitNotice) waitNotice.classList.add('hidden');
+      if (moveNotice) moveNotice.classList.remove('hidden');
+      this.startRoom3AutoResetCountdown();
     }
   },
 
@@ -865,9 +929,6 @@ const QuizApp = {
     } catch (e) {}
   },
 
-  /**
-   * 起動・接続時の高音ピピッ！音
-   */
   playStartupChime() {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -899,12 +960,8 @@ const QuizApp = {
     }
   },
 
-  /**
-   * 画面全体に一瞬走るサイバーバースト（起動フラッシュ）
-   */
   triggerCyberBurstFlash() {
     document.body.classList.remove('cyber-burst-active');
-    // リフロー強制でアニメーションを確実に再トリガー
     void document.body.offsetWidth;
     document.body.classList.add('cyber-burst-active');
     setTimeout(() => {
