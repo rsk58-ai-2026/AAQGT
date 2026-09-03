@@ -6,7 +6,8 @@
   <title>PROJECT AI 〜人類最後のアップデートが始まる〜 | 運営システム</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700;900&family=Noto+Sans+JP:wght@400;500;700;900&family=Share+Tech+Mono&family=DSEG7-Classic:wght@700&display=swap" rel="stylesheet">
+  <!-- 存在しないDSEG7フォントを削除し、レンダリングブロックを解消 -->
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700;900&family=Noto+Sans+JP:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -123,6 +124,7 @@
               <button class="db-filter-chip" onclick="ManualModal.filterQuestions('1')">第1問</button>
               <button class="db-filter-chip" onclick="ManualModal.filterQuestions('2')">第2問</button>
               <button class="db-filter-chip" onclick="ManualModal.filterQuestions('3')">第3問</button>
+              <button class="db-filter-chip" onclick="ManualModal.filterQuestions('ex')">EX問題</button>
             </div>
             <div class="db-sort-bar">
               <label for="db-sort-select" class="sort-label font-cyber">
@@ -843,7 +845,6 @@
           filtered = filtered.filter(q => String(q.room) === String(this.currentFilter));
         }
 
-        // ソート処理
         const diffOrder = { 'easy': 1, 'normal': 2, 'hard': 3, 'ex': 4 };
         filtered.sort((a, b) => {
           if (this.currentSort === 'id-asc') {

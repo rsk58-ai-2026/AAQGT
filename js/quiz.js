@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * quiz.js - 問題機ブース端末（自律分散ステートマシン）
+ * quiz.js - 問題機ブース端末（自律分散ステートマシン / 0秒起動・キャッシュファースト対応）
  */
 const QuizApp = {
   roomKey: null,
@@ -35,7 +35,7 @@ const QuizApp = {
   touchStartY: 0,
   isExUnlocked: false,
 
-  async init() {
+  init() {
     const role = AppStorage.getRole();
     if (!role || !['room1', 'room2', 'room3'].includes(role)) return;
 
@@ -51,14 +51,21 @@ const QuizApp = {
     const badge = document.getElementById('quiz-room-badge');
     if (badge) badge.textContent = CONFIG.ROLE_NAMES[role];
 
+    // ① キャッシュファースト: ローカルストレージから問題を0秒即時復元
+    this.cachedQuestions = AppStorage.getCachedQuestions() || [];
+
+    // ② ネットワーク通信を一切待たずに即座に0秒で画面初期状態を描画
+    this.renderState('idle');
+
+    // イベントリスナーの登録
     this.setupExitListeners();
     this.setupMediaFullscreenModal();
     this.setupRoomSpecificEvents();
 
-    await this.preloadQuestions();
+    // ③ バックグラウンドでGASから最新問題を取得・キャッシュ更新（Stale-While-Revalidate）
+    this.preloadQuestions();
 
-    // 画面初期状態を描画 (各部屋に応じたidle画面を表示)
-    this.renderState('idle');
+    // ④ 状態監視ポーリング開始
     this.startPolling();
   },
 
@@ -141,15 +148,21 @@ const QuizApp = {
     }
   },
 
+  /**
+   * 非同期・バックグラウンドでGASから最新問題を取得しキャッシュ更新
+   */
   async preloadQuestions() {
     try {
       const res = await API.getQuestions(this.roomNumber);
-      if (res && res.success) {
+      if (res && res.success && Array.isArray(res.questions) && res.questions.length > 0) {
         this.cachedQuestions = res.questions;
         AppStorage.cacheQuestions(this.cachedQuestions);
       }
     } catch (e) {
-      this.cachedQuestions = AppStorage.getCachedQuestions() || [];
+      console.warn('バックグラウンド問題更新スキップ（既存キャッシュを利用）:', e);
+      if (!this.cachedQuestions || this.cachedQuestions.length === 0) {
+        this.cachedQuestions = AppStorage.getCachedQuestions() || [];
+      }
     }
   },
 

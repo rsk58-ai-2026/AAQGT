@@ -41,11 +41,11 @@
   --grid-line: rgba(0, 120, 215, 0.15);
   --grid-line-bright: rgba(0, 240, 255, 0.28);
 
-  /* フォントスタック */
+  /* フォントスタック (外部未登録フォントを排除し、安全・高速なスタックに調整) */
   --font-cyber: 'Chakra Petch', sans-serif;
   --font-mono: 'Share Tech Mono', monospace;
   --font-base: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-segment: 'DSEG7-Classic', 'Share Tech Mono', monospace;
+  --font-segment: 'Share Tech Mono', 'Courier New', monospace;
 }
 
 * {
