@@ -10,6 +10,17 @@
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700;900&family=Noto+Sans+JP:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
   <link rel="stylesheet" href="css/style.css">
+  <script>
+    // 新旧ID参照互換性フック
+    (function() {
+      const origGetElem = document.getElementById.bind(document);
+      document.getElementById = function(id) {
+        if (id === 'quiz-view-answered-wait') return origGetElem('answered-view-waiting-next') || origGetElem('quiz-view-answered-wait');
+        if (id === 'quiz-view-answered-move') return origGetElem('answered-view-move-next') || origGetElem('quiz-view-answered-move');
+        return origGetElem(id);
+      };
+    })();
+  </script>
 </head>
 <body class="cyber-bg">
 
@@ -86,32 +97,30 @@
       <div class="manual-body">
         <div id="manual-content-flow" class="manual-tab-content">
           <div class="flow-step-block">
-            <h3 class="flow-heading"><span class="step-num">01</span> 【Room 1】開始 & 難易度選択</h3>
+            <h3 class="flow-heading"><span class="step-num">01</span> 【1問目】開始 & 難易度選択</h3>
             <p class="flow-text">
-              ・お客様が来たら画面の巨大な「MISSION START」をタップ。<br>
+              ・お客様が来たら画面の「MISSION START」をタップ。<br>
               ・30秒の制限時間内に問題セット記号（▲: 簡単 / ■: 普通 / ●: 難しい）を選択して決定。<br>
               ・30秒経過時は自動で ▲（簡単）が決定されます。<br>
-              ・画面全体を上方向に強くスワイプすると、隠し「★（EX）」が出現します。
+              ・難易度選択画面で上方向に強くスワイプすると、隠し「★（EX）」が出現します。
             </p>
           </div>
 
           <div class="flow-step-block">
-            <h3 class="flow-heading"><span class="step-num">02</span> 【Room 2・Room 3】自律バトンリレー</h3>
+            <h3 class="flow-heading"><span class="step-num">02</span> 【2問目・3問目】</h3>
             <p class="flow-text">
-              ・待機中はグリッチ演出がループ表示されます。<br>
-              ・前の部屋が解答完了すると自動で「準備カウントダウン（30秒赤色セグメント）」が開始。<br>
-              ・30秒経過、または「開始」ボタンタップで問題攻略が始まります。<br>
-              ・次の部屋が攻略中の場合は「その場でお待ちください」案内が自動表示されます。
+              ・前の問題が解答完了すると自動で「準備カウントダウン」が開始。<br>
+              30秒経過、または「開始」ボタンタップで問題攻略が始まります。<br>
+              ・次の部屋がまだプレイ中の場合は「その場でお待ちください」と案内が自動表示されます。
             </p>
           </div>
 
           <div class="flow-step-block">
-            <h3 class="flow-heading"><span class="step-num">03</span> 【出口機】リザルト発表・EX合言葉</h3>
+            <h3 class="flow-heading"><span class="step-num">03</span> 【出口】リザルト発表・EX合言葉</h3>
             <p class="flow-text">
-              ・Room 3を終了したグループが保留トレイに自動登録されます。<br>
-              ・到着したグループのチップをタップして成績を表示・解説。<br>
-              ・全問Hard突破者には合言葉が表示されます。<br>
-              ・「案内完了・退室」を押して保留キューから消去します。
+              ・3問目まで終えたグループの結果が蓄積されていきます。<br>
+              ・溶いた問題の解説も表示されているので、画面は見せてもいいです<br>
+              ・Hard全問正解達成したグループには、EX問題に挑戦するための合言葉「しらす」を必ず伝えてください<br>
             </p>
           </div>
         </div>
@@ -194,7 +203,7 @@
           <span class="material-symbols-outlined role-icon">sports_score</span>
           <div>
             <span class="role-title">出口 / リザルト機 [TERMINAL]</span>
-            <span class="role-desc">保留キュー・スコア発表・EX判定・混雑警報</span>
+            <span class="role-desc">保留トレイ・スコア発表・総合ランキング・EX判定</span>
           </div>
         </button>
       </div>
@@ -606,26 +615,28 @@
 
     <!-- [VIEW E] 解答後・移動案内画面 (Answered) -->
     <div id="quiz-view-answered" class="quiz-view hidden">
-      <!-- 前室攻略中待機案内 (Room 1 & Room 2 共用) -->
-      <div id="quiz-view-answered-wait" class="card waiting-card cyber-border-warning hidden">
+      <!-- ① しばらくお待ちください画面（次ブースの準備待機中） -->
+      <div id="answered-view-waiting-next" class="card waiting-card card-wait-handshake cyber-border-warning hidden">
         <div class="waiting-icon-pulse">
-          <span class="material-symbols-outlined icon-xxl icon-warning">pan_tool</span>
+          <span class="material-symbols-outlined icon-xxl icon-warning">sync</span>
         </div>
-        <div class="cyber-glitch-badge warning">CORRIDOR BLOCKED</div>
-        <h2 class="waiting-title">前のお客様が攻略中です</h2>
+        <div class="cyber-glitch-badge warning">HANDSHAKE // WAITING CLEARANCE</div>
+        <h2 class="waiting-title">次ブースの準備を待機しています</h2>
         <p class="waiting-subtitle">
-          次の防壁（<span id="answered-wait-target-node" class="text-highlight font-cyber font-bold">NODE</span>）を他のお客様が攻略しています。<br>
-          <strong>安全のため、扉の前でそのままお待ちください。</strong>
+          ただいま次の防壁エリア（<span id="answered-wait-target-node" class="text-highlight font-cyber font-bold">NODE</span>）の安全確認・受入準備を行っています。<br>
+          <strong>スタッフの案内があるまで扉の前・その場でお待ちください。</strong>
         </p>
+        <div class="handshake-sync-bar"></div>
       </div>
 
-      <!-- 先にお進みください案内 (Room 1, 2, 3 共用) -->
-      <div id="quiz-view-answered-move" class="card move-card text-center cyber-border-accent hidden">
+      <!-- ② 先にお進みください画面（次ブース準備完了・前進許可） -->
+      <div id="answered-view-move-next" class="card move-card card-move-forward text-center cyber-border-accent hidden">
         <div class="move-icon">
           <span class="material-symbols-outlined icon-hero">directions_walk</span>
           <span class="material-symbols-outlined icon-hero">arrow_forward</span>
         </div>
-        <h1 class="move-text">先にお進みください</h1>
+        <div class="cyber-glitch-badge success">CLEARANCE GRANTED // PROCEED</div>
+        <h1 class="move-text">次ブースの準備が完了しました<br>先にお進みください</h1>
         <div class="move-arrow-anim">
           <span class="material-symbols-outlined icon-xl">arrow_downward</span>
         </div>
@@ -688,6 +699,16 @@
       </div>
     </header>
 
+    <!-- ① 表示モード切り替えタブ（保留トレイ/個別発表 vs 総合ランキングBOARD） -->
+    <div id="result-mode-tab-nav" class="result-tab-nav">
+      <button id="btn-tab-mode-detail" class="btn btn-sm btn-tab-mode active font-cyber" onclick="ResultApp.switchMode('detail')">
+        <span class="material-symbols-outlined icon-sm">person</span> 保留トレイ / 成績発表
+      </button>
+      <button id="btn-tab-mode-ranking" class="btn btn-sm btn-tab-mode font-cyber" onclick="ResultApp.switchMode('ranking')">
+        <span class="material-symbols-outlined icon-sm">leaderboard</span> 総合ランキング BOARD
+      </button>
+    </div>
+
     <!-- 保留キュー・横スクロールトレイ -->
     <section class="queue-section">
       <div class="queue-header">
@@ -726,7 +747,7 @@
       </div>
     </div>
 
-    <!-- 成績表示メインビュー -->
+    <!-- 成績表示メインビュー (退室ボタンは削除・チップ切り替えで即閲覧) -->
     <div id="result-view-content" class="quiz-view hidden">
       <!-- EXモード挑戦権獲得バナー -->
       <div id="result-ex-banner" class="banner-ex-qualified hidden">
@@ -763,13 +784,25 @@
         </div>
       </div>
 
-      <!-- 各問成績・解説リスト -->
+      <!-- 各問成績・解説・問題画像カードリスト -->
       <div id="result-cards-container" class="result-cards-grid"></div>
+    </div>
 
-      <!-- 案内完了ボタン -->
-      <button id="btn-finish-result" class="btn btn-success btn-finish-result" onclick="ResultApp.finishAndDismissCurrentGroup()">
-        <span class="material-symbols-outlined icon-md">check</span> 案内完了・退室（キューから除外）
-      </button>
+    <!-- ③ 総合ランキング表示用ビュー -->
+    <div id="result-view-ranking" class="quiz-view hidden">
+      <div class="card ranking-card cyber-border">
+        <div class="ranking-header">
+          <h2 class="ranking-title font-cyber">
+            <span class="material-symbols-outlined icon-md text-highlight">trophy</span> TOP HACKERS // 総合ランキング
+          </h2>
+          <button class="btn btn-secondary btn-sm" onclick="ResultApp.fetchRanking()">
+            <span class="material-symbols-outlined icon-sm">refresh</span> 更新
+          </button>
+        </div>
+        <div id="ranking-list-container" class="ranking-list-grid">
+          <div class="text-center text-muted py-4">ランキングを集計中...</div>
+        </div>
+      </div>
     </div>
   </div>
 

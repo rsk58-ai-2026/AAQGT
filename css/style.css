@@ -41,7 +41,7 @@
   --grid-line: rgba(0, 120, 215, 0.15);
   --grid-line-bright: rgba(0, 240, 255, 0.28);
 
-  /* フォントスタック (外部未登録フォントを排除し、安全・高速なスタックに調整) */
+  /* フォントスタック */
   --font-cyber: 'Chakra Petch', sans-serif;
   --font-mono: 'Share Tech Mono', monospace;
   --font-base: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -1159,7 +1159,7 @@ body.cyber-burst-active::after {
   margin-bottom: 30px;
 }
 
-/* 本物のデジタル時計のような赤色7セグメント表示 */
+/* 赤色7セグメント表示（背後88表示なしのクリーンなLEDタイマー） */
 .seven-segment-container {
   display: inline-flex;
   align-items: baseline;
@@ -1174,19 +1174,7 @@ body.cyber-burst-active::after {
   margin-bottom: 32px;
   position: relative;
 }
-/* うっすら見える非点灯セグメント背景 */
-.seven-segment-container::before {
-  content: '88';
-  font-family: var(--font-segment);
-  font-size: 96px;
-  font-weight: 700;
-  color: var(--led-red-dim);
-  letter-spacing: 6px;
-  position: absolute;
-  top: 24px;
-  left: 44px;
-  pointer-events: none;
-}
+
 .seven-segment-timer {
   font-family: var(--font-segment);
   font-size: 96px;
@@ -1501,7 +1489,7 @@ body.cyber-burst-active::after {
 .effect-subtitle { font-size: 18px; color: #e2e8f0; margin-top: 6px; }
 
 /* --------------------------------------------------------------------------
-   12. 解答後待機 & 移動案内画面 (Answered)
+   12. 解答後待機 & 移動案内画面 (Answered & Handshake)
    -------------------------------------------------------------------------- */
 .waiting-card {
   text-align: center;
@@ -1513,25 +1501,58 @@ body.cyber-burst-active::after {
 .waiting-title { font-size: 28px; margin-bottom: 12px; }
 .waiting-subtitle { color: #94a3b8; font-size: 15px; max-width: 500px; margin: 0 auto; line-height: 1.6; }
 
-/* 警告ストライプ待機フレーム (Room 1 & Room 2 前室攻略中待機) */
+/* ハンドシェイク待機（次ブース空き待ち）専用カードスタイル */
+.card-wait-handshake,
 .waiting-card.cyber-border-warning {
   background:
     repeating-linear-gradient(
       -45deg,
-      rgba(245, 158, 11, 0.03),
-      rgba(245, 158, 11, 0.03) 15px,
-      rgba(5, 8, 19, 0.85) 15px,
-      rgba(5, 8, 19, 0.85) 30px
+      rgba(245, 158, 11, 0.05),
+      rgba(245, 158, 11, 0.05) 16px,
+      rgba(5, 8, 19, 0.88) 16px,
+      rgba(5, 8, 19, 0.88) 32px
     );
   border: 2px solid var(--signal-amber);
+  box-shadow: 0 0 35px rgba(245, 158, 11, 0.25), inset 0 0 25px rgba(245, 158, 11, 0.08);
+  position: relative;
+  overflow: hidden;
 }
 
-.move-card {
+.card-wait-handshake .waiting-title,
+.waiting-card.cyber-border-warning .waiting-title {
+  color: #fbbf24;
+  text-shadow: 0 0 12px rgba(245, 158, 11, 0.4);
+}
+
+.handshake-sync-bar {
+  height: 4px;
+  width: 100%;
+  max-width: 320px;
+  margin: 20px auto 0;
+  background: rgba(245, 158, 11, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+.handshake-sync-bar::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; height: 100%; width: 40%;
+  background: var(--signal-amber);
+  border-radius: 2px;
+  box-shadow: 0 0 10px var(--signal-amber);
+  animation: loading-slide 1.4s infinite ease-in-out;
+}
+
+/* 先にお進みください（前進許可）専用カードスタイル */
+.move-card,
+.card-move-forward {
   padding: 60px 20px;
   margin: 30px auto;
   max-width: 680px;
-  background: var(--bg-panel);
-  box-shadow: 0 0 45px rgba(0, 240, 255, 0.25);
+  background: radial-gradient(ellipse at 50% 30%, rgba(0, 240, 255, 0.12), rgba(5, 8, 19, 0.9) 70%);
+  border: 2px solid var(--neon-cyan);
+  box-shadow: 0 0 50px rgba(0, 240, 255, 0.35), inset 0 0 30px rgba(0, 240, 255, 0.1);
 }
 .move-icon {
   display: flex;
@@ -1540,11 +1561,13 @@ body.cyber-burst-active::after {
   gap: 16px;
   color: var(--neon-cyan);
   margin-bottom: 20px;
+  text-shadow: 0 0 25px var(--neon-cyan);
 }
 .move-text {
-  font-size: 36px;
+  font-size: 38px;
   font-weight: 900;
-  color: var(--neon-cyan);
+  color: #ffffff;
+  text-shadow: 0 0 18px var(--neon-cyan);
   line-height: 1.4;
   margin-bottom: 24px;
 }
@@ -2046,4 +2069,247 @@ body.cyber-burst-active::after {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+   出口機改修: モード切り替えタブ・解説画像サムネイル・総合ランキングボード
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. 出口機モード切り替えタブ UI
+   -------------------------------------------------------------------------- */
+.result-tab-nav {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(0, 120, 215, 0.25);
+  padding-bottom: 12px;
+}
+
+.btn-tab-mode,
+.result-tab-btn {
+  min-height: 44px;
+  padding: 8px 20px;
+  background: rgba(13, 22, 43, 0.85);
+  border: 1px solid #334155;
+  color: #94a3b8;
+  border-radius: 8px;
+  font-family: var(--font-cyber);
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-tab-mode:hover,
+.result-tab-btn:hover {
+  background: rgba(2, 132, 199, 0.15);
+  border-color: rgba(0, 240, 255, 0.5);
+  color: #f8fafc;
+}
+
+.btn-tab-mode.active,
+.result-tab-btn.active {
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.35), rgba(3, 105, 161, 0.45));
+  border-color: var(--neon-cyan);
+  color: #ffffff;
+  box-shadow: 0 0 20px var(--neon-cyan-glow);
+  font-weight: 700;
+}
+
+#btn-tab-mode-ranking.active {
+  border-color: #fbbf24;
+  background: linear-gradient(135deg, rgba(217, 119, 6, 0.3), rgba(180, 83, 9, 0.4));
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.4);
+}
+
+/* --------------------------------------------------------------------------
+   2. 各問リザルトカード内: 問題画像サムネイル
+   -------------------------------------------------------------------------- */
+.result-media-wrapper {
+  margin: 12px 0 16px 0;
+  text-align: center;
+  background: rgba(5, 8, 19, 0.6);
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 120, 215, 0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.result-media-thumb {
+  max-width: 100%;
+  max-height: 180px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  object-fit: contain;
+  cursor: pointer;
+  transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
+}
+
+.result-media-thumb:hover {
+  transform: scale(1.03);
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 25px var(--neon-cyan-glow);
+}
+
+/* --------------------------------------------------------------------------
+   3. 総合ランキングボード (TOP HACKERS BOARD)
+   -------------------------------------------------------------------------- */
+.ranking-card,
+.ranking-board-card {
+  padding: 24px;
+}
+
+.ranking-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(0, 120, 215, 0.3);
+  margin-bottom: 20px;
+}
+
+.ranking-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 900;
+  color: #f8fafc;
+  letter-spacing: 1px;
+}
+
+.ranking-list-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.ranking-list-grid::-webkit-scrollbar { width: 6px; }
+.ranking-list-grid::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+/* ランキング横長カード行 */
+.ranking-item-row,
+.ranking-item {
+  display: grid;
+  grid-template-columns: 90px 1.4fr 1fr 100px 110px;
+  align-items: center;
+  gap: 14px;
+  background: rgba(5, 8, 19, 0.85);
+  border: 1px solid #334155;
+  border-radius: 10px;
+  padding: 12px 18px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+@media (max-width: 768px) {
+  .ranking-item-row,
+  .ranking-item {
+    grid-template-columns: 70px 1.2fr 1fr 80px;
+  }
+  .ranking-col-time { display: none; }
+}
+
+.ranking-item-row:hover {
+  transform: translateX(4px);
+  border-color: rgba(0, 240, 255, 0.5);
+}
+
+/* 順位バッジ・クラウン */
+.ranking-col-rank {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+.rank-num {
+  font-size: 20px;
+  font-weight: 900;
+  color: #94a3b8;
+  padding-left: 8px;
+}
+.rank-crown {
+  font-size: 16px;
+  font-weight: 900;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 1位: ゴールドグロー（金枠＋ゴールドクラウン） */
+.ranking-item-row.top-1 {
+  background: linear-gradient(90deg, rgba(217, 119, 6, 0.22), rgba(5, 8, 19, 0.9));
+  border: 2px solid #fbbf24;
+  box-shadow: 0 0 25px rgba(251, 191, 36, 0.4), inset 0 0 15px rgba(251, 191, 36, 0.1);
+}
+.crown-gold {
+  background: linear-gradient(135deg, #d97706, #fbbf24);
+  color: #000000;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.6);
+}
+
+/* 2位: シルバーグロー（銀枠） */
+.ranking-item-row.top-2 {
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.2), rgba(5, 8, 19, 0.9));
+  border: 2px solid #cbd5e1;
+  box-shadow: 0 0 20px rgba(203, 213, 225, 0.35);
+}
+.crown-silver {
+  background: linear-gradient(135deg, #64748b, #cbd5e1);
+  color: #000000;
+  box-shadow: 0 0 10px rgba(203, 213, 225, 0.5);
+}
+
+/* 3位: ブロンズグロー（銅枠） */
+.ranking-item-row.top-3 {
+  background: linear-gradient(90deg, rgba(180, 83, 9, 0.18), rgba(5, 8, 19, 0.9));
+  border: 2px solid #d97706;
+  box-shadow: 0 0 18px rgba(217, 119, 6, 0.3);
+}
+.crown-bronze {
+  background: linear-gradient(135deg, #92400e, #d97706);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(217, 119, 6, 0.4);
+}
+
+/* 列要素 */
+.ranking-col-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ranking-group-id {
+  font-size: 18px;
+  color: #ffffff;
+}
+.ranking-col-score {
+  text-align: right;
+}
+.ranking-score-val {
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--neon-cyan);
+  text-shadow: 0 0 10px var(--neon-cyan-glow);
+}
+.ranking-score-val small {
+  font-size: 13px;
+  font-weight: 400;
+  color: #94a3b8;
+}
+.ranking-col-miss {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+.ranking-col-time {
+  font-size: 12px;
+  text-align: right;
 }

@@ -109,12 +109,25 @@ const API = {
   },
 
   /**
-   * 各ブース: 解答確定・提出 (自動バトンパス処理)
+   * 各ブース: 解答確定・提出 (自ブースの回答ログ記録)
    */
   async submitRoomAnswer(payload) {
     return await this.post({
       action: 'submitRoomAnswer',
       ...payload
+    });
+  },
+
+  /**
+   * 前の部屋から次の部屋へ安全にバトンを渡すハンドシェイクAPI
+   * 次室が受け入れ可能な状態のときのみ transferred: true が返る
+   */
+  async passBatonToNext(fromRoomKey, groupId = '', difficulty = '') {
+    return await this.post({
+      action: 'passBatonToNext',
+      fromRoomKey: fromRoomKey,
+      groupId: groupId,
+      difficulty: difficulty
     });
   },
 
@@ -162,6 +175,13 @@ const API = {
 
   async getGroupResult(groupId) {
     return await this.get({ action: 'getGroupResult', groupId: groupId });
+  },
+
+  /**
+   * 総合ランキング一覧取得API
+   */
+  async getRanking() {
+    return await this.get({ action: 'getRanking' });
   },
 
   async finishGroupResult(groupId) {
