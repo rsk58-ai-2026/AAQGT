@@ -106,6 +106,27 @@ html, body {
 .icon-gold { color: #fbbf24; }
 .icon-accent { color: var(--neon-cyan); }
 
+/* ==========================================================================
+   CSSレベルでのロール別画面強制分離（多重防御ガード）
+   JSの遅延や初期ロード時のチラつき・誤表示を完全に遮断
+   ========================================================================== */
+body[data-role="room2"] #quiz-view-room1-start,
+body[data-role="room3"] #quiz-view-room1-start,
+body[data-role="room2"] #quiz-view-select-diff,
+body[data-role="room3"] #quiz-view-select-diff {
+  display: none !important;
+}
+
+body[data-role="room1"] #quiz-view-glitch-standby,
+body[data-role="room1"] #quiz-view-ready,
+body[data-role="room1"] #quiz-view-answered-wait {
+  display: none !important;
+}
+
+body[data-role="room3"] #quiz-view-answered-wait {
+  display: none !important;
+}
+
 /* --------------------------------------------------------------------------
    1. コーナーブラケット & パネル
    -------------------------------------------------------------------------- */
@@ -1801,86 +1822,4 @@ html, body {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-/* ==========================================================================
-   ボタン押下時の即時フィードバック & ローディングスタイル
-   ========================================================================== */
-
-/* 回転アニメーション（スピナー用） */
-.anim-spin {
-  display: inline-block;
-  animation: spin-loop 0.85s linear infinite !important;
-}
-@keyframes spin-loop {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* 画面全体の起動フラッシュパルス */
-.effect-startup-burst {
-  animation: startup-burst 0.8s ease-out;
-}
-@keyframes startup-burst {
-  0% {
-    filter: brightness(2.2) drop-shadow(0 0 40px var(--neon-cyan));
-    transform: scale(0.99);
-  }
-  100% {
-    filter: brightness(1);
-    transform: scale(1);
-  }
-}
-
-/* Room 1: 巨大スタートボタン押下・通信中スタイル */
-.btn-giant-start.is-loading {
-  background: radial-gradient(circle at 50% 50%, #0284c7, #0369a1 60%, #082f49 100%) !important;
-  border-color: #ffffff !important;
-  box-shadow:
-    0 0 60px var(--neon-cyan),
-    inset 0 0 45px rgba(255, 255, 255, 0.8) !important;
-  transform: scale(0.94) !important;
-  animation: giant-loading-pulse 0.6s infinite alternate ease-in-out !important;
-  cursor: wait !important;
-}
-
-.btn-giant-start.is-loading::before {
-  border-color: #ffffff !important;
-  animation: rotate-ring 1.2s linear infinite !important; /* 破線リングが超高速回転 */
-}
-
-.btn-giant-start.is-loading .giant-start-icon {
-  color: #ffffff !important;
-}
-
-.btn-giant-start.is-loading .giant-start-text {
-  color: #ffffff !important;
-  letter-spacing: 3px;
-  animation: blink 0.6s infinite;
-}
-
-@keyframes giant-loading-pulse {
-  from {
-    box-shadow: 0 0 35px var(--neon-cyan), inset 0 0 30px rgba(0, 240, 255, 0.5);
-  }
-  to {
-    box-shadow: 0 0 85px var(--neon-cyan), inset 0 0 60px rgba(255, 255, 255, 0.9);
-  }
-}
-
-/* Room 2 / 3: 開始 (START) ボタン押下中スタイル */
-.btn-ready-start.is-loading {
-  background: linear-gradient(135deg, #0284c7, #0369a1) !important;
-  border-color: var(--neon-cyan) !important;
-  box-shadow: 0 0 30px var(--neon-cyan-glow) !important;
-  cursor: wait !important;
-}
-
-/* 決定ボタン無効・ローディング中スタイル */
-.btn-confirm-diff:disabled {
-  background: #1e293b !important;
-  border-color: var(--neon-cyan) !important;
-  color: var(--neon-cyan) !important;
-  box-shadow: 0 0 20px var(--neon-cyan-glow) !important;
-  cursor: wait !important;
 }

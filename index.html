@@ -430,11 +430,10 @@
     </header>
 
     <!-- ------------------------------------------------ -->
-    <!-- [VIEW A] アイドル画面 (Room 1: START / Room 2-3: グリッチ) -->
+    <!-- [VIEW A-1] Room 1 専用: 巨大 MISSION START 画面 -->
     <!-- ------------------------------------------------ -->
-    <div id="quiz-view-idle" class="quiz-view">
-      <!-- Room 1 用：巨大な MISSION START ボタン画面 -->
-      <div id="idle-room1-content" class="start-screen-wrapper">
+    <div id="quiz-view-room1-start" class="quiz-view hidden">
+      <div class="start-screen-wrapper">
         <div class="cyber-glitch-badge">SYSTEM READY // ACCESS POINT</div>
         <h1 class="start-screen-title font-cyber">PROJECT AI</h1>
         <p class="start-screen-subtitle">侵入を開始するには下のボタンをタップしてください</p>
@@ -443,9 +442,13 @@
           <span class="giant-start-text">MISSION START</span>
         </button>
       </div>
+    </div>
 
-      <!-- Room 2 / Room 3 用：全画面サイバーグリッチ・スタンバイ画面 -->
-      <div id="idle-glitch-content" class="glitch-standby-wrapper hidden">
+    <!-- ------------------------------------------------ -->
+    <!-- [VIEW A-2] Room 2 / Room 3 専用: 全画面サイバーグリッチ待機画面 -->
+    <!-- ------------------------------------------------ -->
+    <div id="quiz-view-glitch-standby" class="quiz-view hidden">
+      <div class="glitch-standby-wrapper">
         <div class="glitch-noise-layer"></div>
         <div class="glitch-standby-content">
           <span class="material-symbols-outlined icon-hero icon-accent glitch-icon-anim">sensors</span>
@@ -605,7 +608,7 @@
       </div>
 
       <!-- 先にお進みください案内 (Room 1, Room 3, およびRoom 2開放時) -->
-      <div id="quiz-view-answered-move" class="card move-card text-center cyber-border-accent">
+      <div id="quiz-view-answered-move" class="card move-card text-center cyber-border-accent hidden">
         <div class="move-icon">
           <span class="material-symbols-outlined icon-hero">directions_walk</span>
           <span class="material-symbols-outlined icon-hero">arrow_forward</span>
