@@ -8,6 +8,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700;900&family=Noto+Sans+JP:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <!-- QRコード生成ライブラリ -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- カメラQRコードスキャンライブラリ -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
   <link rel="stylesheet" href="css/style.css">
   <script>
     // 新旧ID参照互換性フック
@@ -86,7 +90,7 @@
 
       <div class="manual-tab-nav">
         <button id="tab-btn-flow" class="manual-tab-btn active font-cyber" onclick="ManualModal.switchTab('flow')">
-          <span class="material-symbols-outlined icon-sm">account_tree</span> 自律運用フロー
+          <span class="material-symbols-outlined icon-sm">account_tree</span> QRバトン運用フロー
         </button>
         <button id="tab-btn-db" class="manual-tab-btn font-cyber" onclick="ManualModal.switchTab('db')">
           <span class="material-symbols-outlined icon-sm">quiz</span> 問題カンニングDB
@@ -96,32 +100,32 @@
       <div class="manual-body">
         <div id="manual-content-flow" class="manual-tab-content">
           <div class="flow-step-block">
-            <h3 class="flow-heading"><span class="step-num">01</span> 【1問目】開始 & 難易度選択</h3>
+            <h3 class="flow-heading"><span class="step-num">01</span> 【第1問】開始 & 難易度選択 & QR発行</h3>
             <p class="flow-text">
               ・お客様が来たら画面の「MISSION START」をタップ。<br>
               ・30秒の制限時間内に問題セット記号（▲: 簡単 / ■: 普通 / ●: 難しい）を選択して決定。<br>
-              ・30秒経過時は自動で ▲（簡単）が決定されます。<br>
-              ・難易度選択画面で上方向に強くスワイプすると、隠し「★（EX）」が出現します。
+              ・解答終了後、画面に<strong>「第1防壁突破QRコード」</strong>と<strong>「4桁アクセスキー」</strong>が表示されます。<br>
+              ・次のお客様が来たら「次のお客様へ」を押して初期画面に戻します。
             </p>
           </div>
 
           <div class="flow-step-block">
-            <h3 class="flow-heading"><span class="step-num">02</span> 【2問目・3問目】自律バトンリレー</h3>
+            <h3 class="flow-heading"><span class="step-num">02</span> 【第2問・第3問】QRスキャンで0秒即時受領</h3>
             <p class="flow-text">
-              ・前の問題が解答完了すると自動で「準備カウントダウン（30秒）」が開始。<br>
-              ・30秒経過、または「開始」ボタンタップで問題攻略が始まります。<br>
-              ・次の部屋がまだプレイ中の場合は「その場でお待ちください」と案内が自動表示され、相手が受け取り次第「先にお進みください」へ切り替わります。<br>
-              ・画面が切り替わらない場合は、画面右上の<strong>【手動更新】</strong>を押して強制同期してください。
+              ・前の部屋の画面に表示されたQRコードを、iPadのインカメラ/背面カメラでスキャンします。<br>
+              ・カメラが読み取りにくい場合は「4桁コードで手入力」を押し、前室のアクセスキーを入力してください。<br>
+              ・スキャン成功と同時にグループ情報・難易度が引き継がれ、0秒で出題がスタートします。<br>
+              ・解答終了後は同様に次の部屋用のQRコードが自動生成されます。
             </p>
           </div>
 
           <div class="flow-step-block">
-            <h3 class="flow-heading"><span class="step-num">03</span> 【出口】リザルト発表・EX合言葉・ランキング</h3>
+            <h3 class="flow-heading"><span class="step-num">03</span> 【出口】最終QRスキャン・リザルト発表・EX合言葉</h3>
             <p class="flow-text">
-              ・3問目まで終えたグループの結果が保留トレイに最新順（左側が最新）で並びます。<br>
-              ・解いた問題の解説・画像も表示されるので、画面を見せながら解説できます。<br>
+              ・出口機上部の「QRコードをスキャン」を押し、第3問の突破QRを読み取ります。<br>
+              ・全3問の総合スコア・詳細解説・正誤判定が0秒で集計・表示されます。<br>
               ・Hard全問正解達成したグループには、EX問題挑戦の合言葉「しらす」を伝えてください。<br>
-              ・「総合ランキングBOARD」タブからいつでも最新の順位表を確認できます。
+              ・「総合ランキングBOARD」タブから最新の順位表を確認できます。
             </p>
           </div>
         </div>
@@ -157,6 +161,77 @@
   </div>
 
   <!-- ========================================== -->
+  <!-- 0-E. QRスキャナー用モーダル                  -->
+  <!-- ========================================== -->
+  <div id="qr-scan-modal" class="modal-overlay hidden">
+    <div class="card qr-scan-card cyber-border-accent">
+      <div class="qr-scan-header">
+        <div class="qr-scan-title-box">
+          <span class="material-symbols-outlined icon-md icon-accent">qr_code_scanner</span>
+          <h3 class="qr-scan-title font-cyber">AUTHENTICATION // QR SCAN</h3>
+        </div>
+        <button class="btn-icon-close" onclick="QRModal.closeScanner()">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <p class="qr-scan-guide">前の防壁端末に表示されているQRコードを枠内にかざしてください</p>
+      <div class="scanner-viewport-wrapper">
+        <div id="qr-reader" class="scanner-viewport"></div>
+        <div class="scanner-laser-line"></div>
+      </div>
+      <div class="scanner-actions">
+        <button class="btn btn-secondary btn-sm font-cyber" onclick="QRModal.switchCamera()">
+          <span class="material-symbols-outlined icon-sm">cameraswitch</span> カメラ切替
+        </button>
+        <button class="btn btn-warning btn-sm font-cyber" onclick="QRModal.switchToPasscode()">
+          <span class="material-symbols-outlined icon-sm">pin</span> 4桁コード手入力
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 0-F. 4桁パスコード入力用テンキーモーダル    -->
+  <!-- ========================================== -->
+  <div id="passcode-input-modal" class="modal-overlay hidden">
+    <div class="card keypad-card cyber-border">
+      <div class="keypad-header">
+        <div class="keypad-title-box">
+          <span class="material-symbols-outlined icon-md icon-gold">pin</span>
+          <h3 class="keypad-title font-cyber">MANUAL KEY OVERRIDE</h3>
+        </div>
+        <button class="btn-icon-close" onclick="KeypadModal.close()">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <p class="keypad-guide">前の端末画面に表示されている【4桁アクセスキー】を入力してください</p>
+      
+      <div class="passcode-display-box font-mono" id="passcode-display-val">----</div>
+
+      <div class="cyber-numpad-grid">
+        <button type="button" class="btn-numpad font-mono" onclick="KeypadModal.pushKey('1')">1</button>
+        <button type="button" class="btn-numpad font-mono" onclick="KeypadModal.pushKey('2')">2</button>
+        <button type="button" class="btn-numpad font-mono" onclick="KeypadModal.pushKey('3')">3</button>
+        <button type="button" class="btn-numpad font-mono" onclick="KeypadModal.pushKey('4')">4</button>
+        <button type="button" class="btn-numpad font-mono" onclick="KeypadModal.pushKey('5')">5</button>
+        <button type="button" class="btn-numpad font-mono" onclick="KeypadModal.pushKey('6')">6</button>
+        <button type="button" class="btn-numpad font-mono" onclick="KeypadModal.pushKey('7')">7</button>
+        <button type="button" class="btn-numpad font-mono" onclick="KeypadModal.pushKey('8')">8</button>
+        <button type="button" class="btn-numpad font-mono" onclick="KeypadModal.pushKey('9')">9</button>
+        <button type="button" class="btn-numpad btn-numpad-clear font-cyber" onclick="KeypadModal.clear()">C</button>
+        <button type="button" class="btn-numpad font-mono" onclick="KeypadModal.pushKey('0')">0</button>
+        <button type="button" class="btn-numpad btn-numpad-bs font-cyber" onclick="KeypadModal.backspace()">
+          <span class="material-symbols-outlined">backspace</span>
+        </button>
+      </div>
+
+      <button id="btn-submit-passcode" class="btn btn-primary btn-submit-passcode font-cyber" onclick="KeypadModal.submit()">
+        <span class="material-symbols-outlined icon-md">vpn_key</span> 認証・出題開始
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
   <!-- 1. 端末役割 選択画面                        -->
   <!-- ========================================== -->
   <div id="role-select-screen" class="screen-container hidden">
@@ -183,28 +258,28 @@
           <span class="material-symbols-outlined role-icon">looks_one</span>
           <div>
             <span class="role-title">第1問 ブース [NODE 1 : ALPHA]</span>
-            <span class="role-desc">スタート受付・記号選択・EXスワイプ・出題</span>
+            <span class="role-desc">スタート受付・記号選択・出題・第1突破QR生成</span>
           </div>
         </button>
         <button class="btn btn-role" onclick="AdminApp.selectRole('room2')">
           <span class="material-symbols-outlined role-icon">looks_two</span>
           <div>
             <span class="role-title">第2問 ブース [NODE 2 : BETA]</span>
-            <span class="role-desc">グリッチ待機・30sセグカウントダウン・出題</span>
+            <span class="role-desc">QRスキャン受領・出題・第2突破QR生成</span>
           </div>
         </button>
         <button class="btn btn-role" onclick="AdminApp.selectRole('room3')">
           <span class="material-symbols-outlined role-icon">looks_3</span>
           <div>
             <span class="role-title">第3問 ブース [NODE 3 : CORE]</span>
-            <span class="role-desc">グリッチ待機・30sセグカウントダウン・出題・出口連携</span>
+            <span class="role-desc">QRスキャン受領・出題・最終突破QR生成</span>
           </div>
         </button>
         <button class="btn btn-role" onclick="AdminApp.selectRole('exit')">
           <span class="material-symbols-outlined role-icon">sports_score</span>
           <div>
             <span class="role-title">出口 / リザルト機 [TERMINAL]</span>
-            <span class="role-desc">保留トレイ・スコア発表・総合ランキング・EX判定</span>
+            <span class="role-desc">最終QRスキャン・成績発表・総合ランキング・EX判定</span>
           </div>
         </button>
       </div>
@@ -454,9 +529,8 @@
         <span id="quiz-group-badge" class="group-pill font-mono">--</span>
       </div>
       <div class="header-right-actions">
-        <!-- ★ 新設: 手動同期・更新ボタン -->
-        <button id="btn-manual-sync-quiz" class="btn btn-secondary btn-sm font-cyber btn-manual-sync" onclick="QuizApp.manualSync()" title="前の部屋からの進行を即座に再取得・反映">
-          <span class="material-symbols-outlined icon-sm">sync</span> 手動更新
+        <button id="btn-manual-sync-quiz" class="btn btn-secondary btn-sm font-cyber btn-manual-sync" onclick="QuizApp.manualSync()" title="問題データを再読込">
+          <span class="material-symbols-outlined icon-sm">sync</span> 更新
         </button>
         <button class="btn btn-manual btn-sm" onclick="ManualModal.open()" title="スタッフマニュアル & カンニング">
           <span class="material-symbols-outlined icon-sm">help</span>
@@ -483,15 +557,23 @@
       </div>
     </div>
 
-    <!-- [VIEW A-2] Room 2 / Room 3 専用: 全画面サイバーグリッチ待機画面 -->
+    <!-- [VIEW A-2] Room 2 / Room 3 専用: QRスキャン & テンキー入力待機画面 -->
     <div id="quiz-view-glitch-standby" class="quiz-view hidden">
       <div class="glitch-standby-wrapper">
         <div class="glitch-noise-layer"></div>
         <div class="glitch-standby-content">
-          <span class="material-symbols-outlined icon-hero icon-accent glitch-icon-anim">sensors</span>
-          <h2 class="glitch-standby-title font-cyber">STANDBY // AWAITING SIGNAL</h2>
-          <p class="glitch-standby-text">前の防壁エリアからの進行同期シグナルを受信待機中...</p>
-          <div class="loading-bar"></div>
+          <span class="material-symbols-outlined icon-hero icon-accent glitch-icon-anim">qr_code_scanner</span>
+          <h2 class="glitch-standby-title font-cyber">STANDBY // AWAITING BATON</h2>
+          <p class="glitch-standby-text">前の防壁エリアの突破QRコードをスキャンして接続してください</p>
+          
+          <div class="baton-auth-btn-group">
+            <button class="btn btn-primary btn-giant-auth font-cyber" onclick="QuizApp.openScanner()">
+              <span class="material-symbols-outlined icon-lg">photo_camera</span> カメラでQRをスキャン
+            </button>
+            <button class="btn btn-secondary btn-giant-auth-sub font-cyber" onclick="QuizApp.openPasscodeInput()">
+              <span class="material-symbols-outlined icon-md">pin</span> 4桁コードで手入力
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -615,43 +697,28 @@
       </div>
     </div>
 
-    <!-- [VIEW E] 解答後・移動案内画面 (Answered) -->
+    <!-- [VIEW E] 解答後・QRバトン表示画面 (Answered) -->
     <div id="quiz-view-answered" class="quiz-view hidden">
-      <!-- ① しばらくお待ちください画面（次ブースの準備待機中） -->
-      <div id="answered-view-waiting-next" class="card waiting-card card-wait-handshake cyber-border-warning hidden">
-        <div class="waiting-icon-pulse">
-          <span class="material-symbols-outlined icon-xxl icon-warning">sync</span>
-        </div>
-        <div class="cyber-glitch-badge warning">HANDSHAKE // WAITING CLEARANCE</div>
-        <h2 class="waiting-title font-cyber">次ブースの準備を待機しています</h2>
-        <p class="waiting-subtitle">
-          ただいま次の防壁エリア（<span id="answered-wait-target-node" class="text-highlight font-cyber font-bold">NODE</span>）の安全確認・受入準備を行っています。<br>
-          <strong>スタッフの案内があるまで扉の前・その場でお待ちください。</strong>
-        </p>
-        <div class="handshake-sync-bar"></div>
-      </div>
+      <div class="card qr-output-card text-center cyber-border-accent">
+        <div class="cyber-glitch-badge success">BARRIER PURGED // PASSCODE READY</div>
+        <h2 class="qr-output-title font-cyber">次の防壁端末でスキャンしてください</h2>
+        <p class="qr-output-subtitle">次エリアの端末カメラに下のQRコードをかざすと、0秒でデータが同期されます</p>
 
-      <!-- ② 先にお進みください画面（次ブース準備完了・前進許可） -->
-      <div id="answered-view-move-next" class="card move-card card-move-forward text-center cyber-border-accent hidden">
-        <div class="move-icon">
-          <span class="material-symbols-outlined icon-hero">directions_walk</span>
-          <span class="material-symbols-outlined icon-hero">arrow_forward</span>
-        </div>
-        <div class="cyber-glitch-badge success">CLEARANCE GRANTED // PROCEED</div>
-        <h1 class="move-text font-cyber">次ブースの準備が完了しました<br>先にお進みください</h1>
-        <div class="move-arrow-anim">
-          <span class="material-symbols-outlined icon-xl">arrow_downward</span>
+        <!-- 大きなQRコード描画コンテナ -->
+        <div class="qr-code-frame">
+          <div id="qr-code-output" class="qr-code-container"></div>
         </div>
 
-        <!-- Room 3専用: 30秒自動リセットカウントダウン表示 -->
-        <div id="room3-auto-reset-notice" class="auto-reset-notice hidden font-cyber">
-          ※ <span id="room3-reset-timer-val" class="font-mono text-warning font-bold">30</span> 秒後に自動でスタンバイ画面に戻ります
+        <!-- バックアップ用4桁アクセスキー -->
+        <div class="backup-key-wrapper">
+          <span class="backup-key-label font-cyber">手入力用アクセスキー：</span>
+          <strong id="backup-passcode-display" class="backup-key-val font-mono">----</strong>
         </div>
 
-        <!-- Room 3専用: 手動待機復帰ボタン -->
-        <div id="room3-manual-reset-box" class="room3-manual-reset-box hidden">
-          <button id="btn-room3-manual-reset" class="btn btn-secondary btn-sm font-cyber" onclick="QuizApp.handleRoom3ManualReset()">
-            <span class="material-symbols-outlined icon-sm">restart_alt</span> NEXT STANDBY (手動待機復帰)
+        <!-- 次のお客様へ戻るボタン -->
+        <div class="next-guest-box">
+          <button class="btn btn-secondary btn-next-guest font-cyber" onclick="QuizApp.resetToIdle()">
+            <span class="material-symbols-outlined icon-md">restart_alt</span> 次のお客様へ（初期画面に戻る）
           </button>
         </div>
       </div>
@@ -683,7 +750,7 @@
         <span class="badge badge-exit font-cyber">
           <span class="material-symbols-outlined icon-sm">sports_score</span> TERMINAL // 出口
         </span>
-        <span class="group-pill font-mono">SELECT: <strong id="result-group-id">未選択</strong></span>
+        <span class="group-pill font-mono">GROUP: <strong id="result-group-id">未スキャン</strong></span>
       </div>
       <div class="header-right-actions">
         <button class="btn btn-manual btn-sm font-cyber" onclick="ManualModal.open()" title="スタッフマニュアル & カンニング">
@@ -701,46 +768,54 @@
       </div>
     </header>
 
+    <!-- 出口機 QRスキャン起動エリア -->
+    <section class="result-scan-action-section">
+      <div class="scan-action-card cyber-border-accent">
+        <div class="scan-action-info">
+          <span class="material-symbols-outlined icon-lg icon-accent">qr_code_scanner</span>
+          <div>
+            <h3 class="scan-action-title font-cyber">第3問の突破QRコードをスキャン</h3>
+            <p class="scan-action-subtitle">お客様の最終QRコードを読み取ると0秒で全問の成績を集計・発表します</p>
+          </div>
+        </div>
+        <div class="scan-btn-group">
+          <button class="btn btn-primary btn-scan-exit font-cyber" onclick="ResultApp.openScanner()">
+            <span class="material-symbols-outlined icon-md">photo_camera</span> QRスキャン
+          </button>
+          <button class="btn btn-secondary btn-passcode-exit font-cyber" onclick="ResultApp.openPasscodeInput()">
+            <span class="material-symbols-outlined icon-sm">pin</span> 4桁コード入力
+          </button>
+        </div>
+      </div>
+    </section>
+
     <!-- 表示モード切り替えタブ -->
     <div id="result-mode-tab-nav" class="result-tab-nav">
       <button id="btn-tab-mode-detail" class="btn btn-sm btn-tab-mode active font-cyber" onclick="ResultApp.switchMode('detail')">
-        <span class="material-symbols-outlined icon-sm">person</span> 保留トレイ / 成績発表
+        <span class="material-symbols-outlined icon-sm">person</span> 個別成績発表
       </button>
       <button id="btn-tab-mode-ranking" class="btn btn-sm btn-tab-mode font-cyber" onclick="ResultApp.switchMode('ranking')">
         <span class="material-symbols-outlined icon-sm">leaderboard</span> 総合ランキング BOARD
       </button>
     </div>
 
-    <!-- 保留キュー・横スクロールトレイ -->
-    <section class="queue-section">
-      <div class="queue-header">
-        <span class="queue-title font-cyber">
-          <span class="material-symbols-outlined icon-sm icon-accent">inventory_2</span> 到着待ち保留トレイ
-        </span>
-        <span id="pending-count-badge" class="badge badge-secondary font-mono">0組</span>
-      </div>
-      <div id="pending-queue-rack" class="queue-rack-container">
-        <div class="queue-empty-msg">到着待ちグループはありません</div>
-      </div>
-    </section>
-
-    <!-- 待機ビュー（グループ未選択時） -->
+    <!-- 待機ビュー（未スキャン時） -->
     <div id="result-view-waiting" class="quiz-view">
-      <div class="card waiting-card cyber-border">
+      <div class="card waiting-card cyber-border text-center">
         <div class="waiting-icon-pulse">
-          <span class="material-symbols-outlined icon-xxl icon-accent">how_to_reg</span>
+          <span class="material-symbols-outlined icon-xxl icon-accent">qr_code_scanner</span>
         </div>
-        <h2 class="waiting-title font-cyber">お客様の到着をお待ちください</h2>
+        <h2 class="waiting-title font-cyber">お客様の最終QRコードをスキャンしてください</h2>
         <p class="waiting-subtitle">
-          第3問を終了したグループが上のトレイに表示されます。<br>
-          到着したグループのカードをタップすると成績が表示されます。
+          上の「QRスキャン」または「4桁コード入力」ボタンを押して、<br>
+          第3問端末に表示されている突破QRコードを読み取ってください。
         </p>
       </div>
     </div>
 
     <!-- ローディングビュー -->
     <div id="result-view-loading" class="quiz-view hidden">
-      <div class="card waiting-card cyber-border">
+      <div class="card waiting-card cyber-border text-center">
         <div class="waiting-icon-pulse">
           <span class="material-symbols-outlined icon-xxl icon-accent">analytics</span>
         </div>
@@ -788,6 +863,13 @@
 
       <!-- 各問成績・解説・問題画像カードリスト -->
       <div id="result-cards-container" class="result-cards-grid"></div>
+
+      <!-- 次のグループ受付ボタン -->
+      <div class="text-center py-4">
+        <button class="btn btn-primary btn-lg font-cyber" onclick="ResultApp.resetToWaiting()">
+          <span class="material-symbols-outlined icon-md">how_to_reg</span> 次のお客様をスキャン
+        </button>
+      </div>
     </div>
 
     <!-- 総合ランキング表示用ビュー -->

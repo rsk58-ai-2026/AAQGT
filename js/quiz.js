@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * quiz.js - 問題機ブース端末（自律分散ステートマシン / 手動強制同期・ID整合性ガード・ハンドシェイク実装）
+ * quiz.js - 問題機ブース端末（完全自律型・QRコードバトンリレー駆動）
  */
 const QuizApp = {
   roomKey: null,
@@ -16,27 +16,30 @@ const QuizApp = {
   missCount: 0,
   timerInterval: null,
 
-  // 30秒カウントダウン用（Readyおよび難易度選択）
+  // 30秒カウントダウン用（難易度選択）
   readyTimeLeft: 30,
   readyTimerInterval: null,
 
-  // Room 3 解答後 30秒自動スタンバイ復帰タイマー
-  room3AutoResetTimer: null,
-  room3AutoResetTimeLeft: 30,
+  // バトンデータ（前室からの引き継ぎ・蓄積データ）
+  batonData: {
+    groupId: '',
+    difficulty: 'normal',
+    fromRoom: 0,
+    q1: null,
+    q2: null,
+    q3: null,
+    totalScore: 0,
+    totalMisses: 0,
+    exQualified: false
+  },
 
-  // 解答後ハンドシェイク（次室へのバトン渡し）制御
-  isBatonTransferred: false,
-  batonHandshakeTimer: null,
-
-  // UI・通信フラグ
+  // UI・制御フラグ
   isLowBattery: false,
   isEmergencyPaused: false,
   isInfoPaused: false,
-  isManualSyncing: false,
-  pollingTimer: null,
   pendingJudgeResult: null,
 
-  // スワイプ検知用（Room1 EX用）
+  // スワイプ検知用（Room 1 EX用）
   touchStartY: 0,
   isExUnlocked: false,
 
@@ -47,7 +50,7 @@ const QuizApp = {
     this.roomKey = role;
     this.roomNumber = CONFIG.ROOM_NUMBERS[role];
 
-    // CSSによるロール別DOM強制分離のためにdataset.roleを設定
+    // CSSによるロール別DOM強制分離
     document.body.dataset.role = this.roomKey;
 
     const screen = document.getElementById('quiz-screen');
@@ -56,10 +59,10 @@ const QuizApp = {
     const badge = document.getElementById('quiz-room-badge');
     if (badge) badge.textContent = CONFIG.ROLE_NAMES[role];
 
-    // ① キャッシュファースト: ローカルストレージから問題を0秒即時復元
+    // ① キャッシュファースト: ローカルストレージから問題を即時読込
     this.cachedQuestions = AppStorage.getCachedQuestions() || [];
 
-    // ② ネットワーク通信を待たずに即座に0秒で画面初期状態を描画
+    // ② 初期画面状態を描画
     this.renderState('idle');
 
     // イベントリスナーの登録
@@ -67,25 +70,15 @@ const QuizApp = {
     this.setupMediaFullscreenModal();
     this.setupRoomSpecificEvents();
 
-    // ③ バックグラウンドでGASから最新問題を取得・キャッシュ更新
+    // ③ バックグラウンドで最新問題データを更新（非同期）
     this.preloadQuestions();
-
-    // ④ 状態監視ポーリング開始
-    this.startPolling();
   },
 
   setupExitListeners() {
     const notifyExit = () => {
-      this.stopRoom3AutoResetCountdown();
-      this.stopBatonHandshake();
-      const payload = JSON.stringify({
-        action: 'updateRoomStatus',
-        roomKey: this.roomKey,
-        status: 'idle'
-      });
-      if (navigator.sendBeacon) navigator.sendBeacon(CONFIG.GAS_API_URL, payload);
+      this.stopTimer();
+      this.stopReadyTimer();
     };
-
     window.addEventListener('pagehide', notifyExit);
     window.addEventListener('beforeunload', notifyExit);
   },
@@ -123,7 +116,7 @@ const QuizApp = {
   },
 
   setupRoomSpecificEvents() {
-    // Room1: 画面上スワイプ検知でEXモード記号を露出
+    // Room 1: 画面上スワイプ検知でEXモード記号を解放
     if (this.roomKey === 'room1') {
       const selectView = document.getElementById('quiz-view-select-diff');
       if (selectView) {
@@ -154,38 +147,8 @@ const QuizApp = {
   },
 
   /**
-   * 手動更新（強制同期リフレッシュ）
-   * 前の部屋からの進行シグナルが遅延している場合にスタッフが押して即時反映させる
+   * 問題データのローカル事前取得・更新
    */
-  async manualSync() {
-    if (this.isManualSyncing) return;
-    this.isManualSyncing = true;
-
-    const btn = document.getElementById('btn-manual-sync-quiz');
-    if (btn) {
-      btn.classList.add('is-syncing');
-      btn.innerHTML = '<span class="material-symbols-outlined icon-sm icon-spin">sync</span> 同期中...';
-    }
-
-    this.playAudioTone(1200, 0.08, 'sine');
-
-    try {
-      await this.checkStatus();
-      await this.preloadQuestions();
-      this.playAudioTone(1600, 0.12, 'triangle');
-    } catch (e) {
-      console.warn('手動同期エラー:', e);
-    } finally {
-      setTimeout(() => {
-        this.isManualSyncing = false;
-        if (btn) {
-          btn.classList.remove('is-syncing');
-          btn.innerHTML = '<span class="material-symbols-outlined icon-sm">sync</span> 手動更新';
-        }
-      }, 500);
-    }
-  },
-
   async preloadQuestions() {
     try {
       const res = await API.getQuestions(this.roomNumber);
@@ -198,152 +161,76 @@ const QuizApp = {
         AppStorage.cacheQuestions(this.cachedQuestions);
       }
     } catch (e) {
-      console.warn('バックグラウンド問題更新スキップ（既存キャッシュを利用）:', e);
+      console.warn('[QuizApp] 問題取得スキップ（既存キャッシュ利用）:', e);
       if (!this.cachedQuestions || this.cachedQuestions.length === 0) {
         this.cachedQuestions = AppStorage.getCachedQuestions() || [];
       }
     }
   },
 
-  startPolling() {
-    this.checkStatus();
-    if (this.pollingTimer) clearInterval(this.pollingTimer);
-    this.pollingTimer = setInterval(() => this.checkStatus(), CONFIG.POLLING_INTERVAL_MS);
-  },
-
-  async checkStatus() {
-    try {
-      const res = await API.getStatus();
-      if (!res || !res.success) return;
-
-      // 1. 緊急一時停止の監視
-      const pauseOverlay = document.getElementById('pause-lock-overlay');
-      if (res.systemPaused) {
-        if (!this.isEmergencyPaused) {
-          this.isEmergencyPaused = true;
-          this.stopTimer();
-          this.stopReadyTimer();
-          this.stopRoom3AutoResetCountdown();
-          this.stopBatonHandshake();
-          if (pauseOverlay) pauseOverlay.classList.remove('hidden');
-        }
-        return;
-      } else {
-        if (this.isEmergencyPaused) {
-          this.isEmergencyPaused = false;
-          if (pauseOverlay) pauseOverlay.classList.add('hidden');
-          if (this.currentState === 'playing' && this.timeLeft > 0) this.startTimer();
-          if (this.currentState === 'ready' && this.readyTimeLeft > 0) this.startReadyTimer();
-        }
-      }
-
-      // 2. 機材調整待機（Info Pause）の監視
-      const infoPauseOverlay = document.getElementById('info-pause-overlay');
-      if (res.infoPaused) {
-        if (!this.isInfoPaused) {
-          this.isInfoPaused = true;
-          this.stopTimer();
-          this.stopReadyTimer();
-          this.stopRoom3AutoResetCountdown();
-          this.stopBatonHandshake();
-          if (infoPauseOverlay) infoPauseOverlay.classList.remove('hidden');
-        }
-        return;
-      } else {
-        if (this.isInfoPaused) {
-          this.isInfoPaused = false;
-          if (infoPauseOverlay) infoPauseOverlay.classList.add('hidden');
-          if (this.currentState === 'playing' && this.timeLeft > 0) this.startTimer();
-          if (this.currentState === 'ready' && this.readyTimeLeft > 0) this.startReadyTimer();
-        }
-      }
-
-      // 3. 自律分散ステートマシンの同期処理
-      const myData = res.statuses[this.roomKey];
-      if (!myData) return;
-
-      if (this.roomKey === 'room1') {
-        this.syncStateRoom1(myData, res.statuses);
-      } else if (this.roomKey === 'room2') {
-        this.syncStateRoom2(myData, res.statuses);
-      } else if (this.roomKey === 'room3') {
-        this.syncStateRoom3(myData, res.statuses);
-      }
-    } catch (e) {
-      console.warn('Polling check error:', e);
+  /**
+   * 手動更新ボタン（問題マスタの強制再読込）
+   */
+  async manualSync() {
+    const btn = document.getElementById('btn-manual-sync-quiz');
+    if (btn) {
+      btn.classList.add('is-syncing');
+      btn.innerHTML = '<span class="material-symbols-outlined icon-sm icon-spin">sync</span> 更新中...';
     }
+
+    this.playAudioTone(1200, 0.08, 'sine');
+    await this.preloadQuestions();
+    this.playAudioTone(1600, 0.12, 'triangle');
+
+    setTimeout(() => {
+      if (btn) {
+        btn.classList.remove('is-syncing');
+        btn.innerHTML = '<span class="material-symbols-outlined icon-sm">sync</span> 更新';
+      }
+    }, 400);
   },
 
   // ==========================================
-  // Room 1 固有ステートマシン
+  // 1. Room 1: スタート & 難易度選択
   // ==========================================
 
-  syncStateRoom1(myData, allStatuses) {
-    if (this.currentState === 'playing') return;
-
-    if (this.currentState === 'answered') {
-      const room2 = allStatuses.room2 || {};
-      if (room2.status === 'playing' && String(room2.groupId || '').trim() === String(this.currentGroupId || '').trim()) {
-        this.stopBatonHandshake();
-        this.currentGroupId = null;
-        this.renderState('idle');
-        return;
-      }
-    }
-
-    if (myData.status === 'idle' && this.currentState !== 'idle') {
-      this.stopBatonHandshake();
-      this.currentGroupId = null;
-      this.renderState('idle');
-    }
+  /**
+   * Room 1 ローカル採番（G-01, G-02...）
+   */
+  generateLocalGroupId() {
+    const key = 'PROJAI_LOCAL_GROUP_SEQ';
+    let current = parseInt(localStorage.getItem(key) || '0', 10);
+    current++;
+    localStorage.setItem(key, String(current));
+    return 'G-' + String(current).padStart(2, '0');
   },
 
-  async handleRoom1Start() {
-    const btn = document.getElementById('btn-room1-start');
-    if (!btn || btn.classList.contains('is-loading')) return;
-
+  handleRoom1Start() {
     this.playStartupChime();
     this.triggerCyberBurstFlash();
 
-    btn.disabled = true;
-    btn.classList.add('is-loading');
-    btn.innerHTML = `
-      <span class="giant-start-icon material-symbols-outlined icon-spin">sync</span>
-      <span class="giant-start-text">CONNECTING...</span>
-    `;
+    this.currentGroupId = this.generateLocalGroupId();
+    this.updateGroupBadge(this.currentGroupId);
 
-    try {
-      const res = await API.startRoom1();
-      if (res && res.success) {
-        this.currentGroupId = String(res.groupId || '').trim();
-        this.updateGroupBadge(this.currentGroupId);
-        this.isExUnlocked = false;
+    // バトンデータ初期化
+    this.batonData = {
+      groupId: this.currentGroupId,
+      difficulty: 'normal',
+      fromRoom: 1,
+      q1: null,
+      q2: null,
+      q3: null,
+      totalScore: 0,
+      totalMisses: 0,
+      exQualified: false
+    };
 
-        const exBtn = document.getElementById('btn-symbol-ex');
-        if (exBtn) exBtn.classList.add('hidden');
+    this.isExUnlocked = false;
+    const exBtn = document.getElementById('btn-symbol-ex');
+    if (exBtn) exBtn.classList.add('hidden');
 
-        this.renderState('select-diff');
-        this.startDifficultySelectTimer();
-      } else {
-        alert(res.error || '開始処理に失敗しました');
-        this.resetRoom1StartButton();
-      }
-    } catch (e) {
-      alert('通信エラーが発生しました。再度お試しください。');
-      this.resetRoom1StartButton();
-    }
-  },
-
-  resetRoom1StartButton() {
-    const btn = document.getElementById('btn-room1-start');
-    if (btn) {
-      btn.disabled = false;
-      btn.classList.remove('is-loading');
-      btn.innerHTML = `
-        <span class="giant-start-icon material-symbols-outlined">power_settings_new</span>
-        <span class="giant-start-text">MISSION START</span>
-      `;
-    }
+    this.renderState('select-diff');
+    this.startDifficultySelectTimer();
   },
 
   startDifficultySelectTimer() {
@@ -359,257 +246,7 @@ const QuizApp = {
 
       if (this.readyTimeLeft <= 0) {
         this.stopReadyTimer();
-        this.selectDifficultyAndStart('easy', true);
-      }
-    }, 1000);
-  },
-
-  updateDiffSelectTimerDisplay() {
-    const elem = document.getElementById('diff-select-timer');
-    if (elem) {
-      elem.textContent = String(this.readyTimeLeft).padStart(2, '0');
-    }
-  },
-
-  async selectDifficultyAndStart(diffSymbol, isAuto = false) {
-    this.stopReadyTimer();
-    const cleanDiff = String(diffSymbol || 'easy').trim().toLowerCase();
-    this.currentDifficulty = cleanDiff;
-
-    const confirmBtn = document.getElementById('btn-confirm-diff');
-    if (confirmBtn) {
-      confirmBtn.disabled = true;
-      confirmBtn.classList.add('is-loading');
-      confirmBtn.innerHTML = '<span class="material-symbols-outlined icon-md icon-spin">sync</span> 展開中...';
-      this.playStartupChime();
-    }
-
-    let candidates = this.cachedQuestions.filter(q => q.difficulty === cleanDiff);
-    if (cleanDiff === 'ex' && candidates.length === 0) {
-      try {
-        const exRes = await API.getQuestions('ex', 'ex');
-        if (exRes && exRes.success && Array.isArray(exRes.questions)) {
-          candidates = exRes.questions;
-        }
-      } catch (e) {}
-    }
-
-    if (candidates.length === 0) {
-      alert(`該当する問題データが存在しません [${cleanDiff.toUpperCase()}]`);
-      this.resetConfirmDiffButton();
-      this.renderState('idle');
-      return;
-    }
-
-    this.currentQuestion = candidates[Math.floor(Math.random() * candidates.length)];
-    const chosenQid = String(this.currentQuestion.id || '').trim();
-
-    try {
-      await API.confirmRoom1Difficulty(cleanDiff, chosenQid);
-      this.startPlay();
-    } catch (e) {
-      alert('難易度確定の通信に失敗しました。');
-      this.resetConfirmDiffButton();
-      this.renderState('idle');
-    }
-  },
-
-  resetConfirmDiffButton() {
-    const confirmBtn = document.getElementById('btn-confirm-diff');
-    if (confirmBtn) {
-      confirmBtn.disabled = false;
-      confirmBtn.classList.remove('is-loading');
-      confirmBtn.innerHTML = '<span class="material-symbols-outlined icon-md">play_arrow</span> 決定して開始';
-    }
-  },
-
-  // ==========================================
-  // Room 2 固有ステートマシン
-  // ==========================================
-
-  syncStateRoom2(myData, allStatuses) {
-    if (this.currentState === 'playing') return;
-
-    const serverStatus = String(myData.status || '').trim().toLowerCase();
-
-    // 待機中(idle)の時のみ新グループを受領
-    if (serverStatus === 'ready' && this.currentState === 'idle') {
-      this.currentGroupId = String(myData.groupId || '').trim();
-      this.currentDifficulty = String(myData.difficulty || 'normal').trim().toLowerCase();
-      this.updateGroupBadge(this.currentGroupId);
-
-      this.renderState('ready');
-      this.startReadyCountdown(myData.timeLimit || 60);
-      return;
-    }
-
-    if (this.currentState === 'answered') {
-      const room3 = allStatuses.room3 || {};
-      if (String(room3.status || '').trim().toLowerCase() === 'playing' && String(room3.groupId || '').trim() === String(this.currentGroupId || '').trim()) {
-        this.stopBatonHandshake();
-        this.currentGroupId = null;
-        this.renderState('idle');
-        return;
-      }
-    }
-
-    if (serverStatus === 'idle' && this.currentState !== 'idle' && this.currentState !== 'answered') {
-      this.stopBatonHandshake();
-      this.currentGroupId = null;
-      this.renderState('idle');
-    }
-  },
-
-  // ==========================================
-  // Room 3 固有ステートマシン
-  // ==========================================
-
-  syncStateRoom3(myData, allStatuses) {
-    if (this.currentState === 'playing') return;
-
-    const serverStatus = String(myData.status || '').trim().toLowerCase();
-
-    if (serverStatus === 'ready') {
-      if (this.currentState === 'idle' || this.currentState === 'answered') {
-        this.stopRoom3AutoResetCountdown();
-        this.currentGroupId = String(myData.groupId || '').trim();
-        this.currentDifficulty = String(myData.difficulty || 'normal').trim().toLowerCase();
-        this.updateGroupBadge(this.currentGroupId);
-
-        this.renderState('ready');
-        this.startReadyCountdown(myData.timeLimit || 60);
-      }
-      return;
-    }
-
-    if (serverStatus === 'idle' && this.currentState !== 'idle' && this.currentState !== 'answered') {
-      this.stopRoom3AutoResetCountdown();
-      this.currentGroupId = null;
-      this.renderState('idle');
-    }
-  },
-
-  // ==========================================
-  // ハンドシェイク通信（解答提出後のバトン渡し）
-  // ==========================================
-
-  startBatonHandshake() {
-    this.stopBatonHandshake();
-    this.isBatonTransferred = false;
-
-    this.tryPassBaton();
-
-    this.batonHandshakeTimer = setInterval(() => {
-      if (this.isEmergencyPaused || this.isInfoPaused) return;
-      this.tryPassBaton();
-    }, 2500);
-  },
-
-  stopBatonHandshake() {
-    if (this.batonHandshakeTimer) {
-      clearInterval(this.batonHandshakeTimer);
-      this.batonHandshakeTimer = null;
-    }
-  },
-
-  async tryPassBaton() {
-    if (this.isBatonTransferred || this.currentState !== 'answered') {
-      this.stopBatonHandshake();
-      return;
-    }
-
-    try {
-      const res = await API.passBatonToNext(this.roomKey, this.currentGroupId, this.currentDifficulty);
-      if (res && res.success && res.transferred) {
-        this.isBatonTransferred = true;
-        this.stopBatonHandshake();
-
-        const waitNotice = document.getElementById('quiz-view-answered-wait');
-        const moveNotice = document.getElementById('quiz-view-answered-move');
-        if (waitNotice) waitNotice.classList.add('hidden');
-        if (moveNotice) moveNotice.classList.remove('hidden');
-
-        this.playAudioTone(880, 0.25, 'sine');
-      }
-    } catch (e) {
-      console.warn('ハンドシェイク問い合わせ待機中:', e);
-    }
-  },
-
-  // ==========================================
-  // Room 3 解答後 30秒自動スタンバイ復帰 & 手動復帰処理
-  // ==========================================
-
-  startRoom3AutoResetCountdown() {
-    this.stopRoom3AutoResetCountdown();
-    this.room3AutoResetTimeLeft = 30;
-
-    const noticeElem = document.getElementById('room3-auto-reset-notice');
-    const timerElem = document.getElementById('room3-reset-timer-val');
-
-    if (noticeElem) noticeElem.classList.remove('hidden');
-    if (timerElem) timerElem.textContent = this.room3AutoResetTimeLeft;
-
-    this.room3AutoResetTimer = setInterval(async () => {
-      if (this.isEmergencyPaused || this.isInfoPaused) return;
-
-      this.room3AutoResetTimeLeft--;
-      if (timerElem) timerElem.textContent = Math.max(0, this.room3AutoResetTimeLeft);
-
-      if (this.room3AutoResetTimeLeft <= 0) {
-        this.stopRoom3AutoResetCountdown();
-        this.currentGroupId = null;
-        this.renderState('idle');
-
-        try {
-          await API.updateRoomStatus(this.roomKey, 'idle');
-        } catch (e) {
-          console.warn('Room3 auto-reset error:', e);
-        }
-      }
-    }, 1000);
-  },
-
-  stopRoom3AutoResetCountdown() {
-    if (this.room3AutoResetTimer) {
-      clearInterval(this.room3AutoResetTimer);
-      this.room3AutoResetTimer = null;
-    }
-    const noticeElem = document.getElementById('room3-auto-reset-notice');
-    if (noticeElem) noticeElem.classList.add('hidden');
-  },
-
-  async handleRoom3ManualReset() {
-    this.stopRoom3AutoResetCountdown();
-    this.currentGroupId = null;
-    this.renderState('idle');
-
-    try {
-      await API.updateRoomStatus(this.roomKey, 'idle');
-    } catch (e) {
-      console.warn('Room3 manual reset error:', e);
-    }
-  },
-
-  // ==========================================
-  // Room 2 / Room 3 共通: 30秒カウントダウン (Ready)
-  // ==========================================
-
-  startReadyCountdown(customTimeLimit) {
-    this.readyTimeLeft = 30;
-    this.updateReadySevenSegment(this.readyTimeLeft);
-    this.stopReadyTimer();
-    this.resetReadyStartButton();
-
-    this.readyTimerInterval = setInterval(() => {
-      if (this.isEmergencyPaused || this.isInfoPaused) return;
-
-      this.readyTimeLeft--;
-      this.updateReadySevenSegment(this.readyTimeLeft);
-
-      if (this.readyTimeLeft <= 0) {
-        this.stopReadyTimer();
-        this.confirmStartPlaying(customTimeLimit);
+        this.selectDifficultyAndStart('easy');
       }
     }, 1000);
   },
@@ -621,61 +258,120 @@ const QuizApp = {
     }
   },
 
-  updateReadySevenSegment(sec) {
-    const elem = document.getElementById('ready-seven-segment');
+  updateDiffSelectTimerDisplay() {
+    const elem = document.getElementById('diff-select-timer');
     if (elem) {
-      elem.textContent = String(Math.max(0, sec)).padStart(2, '0');
+      elem.textContent = String(Math.max(0, this.readyTimeLeft)).padStart(2, '0');
     }
   },
 
-  async confirmStartPlaying(customTimeLimit = 60) {
+  async selectDifficultyAndStart(diffSymbol) {
     this.stopReadyTimer();
+    const cleanDiff = String(diffSymbol || 'easy').trim().toLowerCase();
+    this.currentDifficulty = cleanDiff;
+    this.batonData.difficulty = cleanDiff;
 
     this.playStartupChime();
     this.triggerCyberBurstFlash();
 
-    const readyBtn = document.querySelector('.btn-ready-start');
-    if (readyBtn) {
-      readyBtn.disabled = true;
-      readyBtn.classList.add('is-loading');
-      readyBtn.innerHTML = '<span class="material-symbols-outlined icon-lg icon-spin">sync</span> 起動中...';
-    }
-
-    const cleanDiff = String(this.currentDifficulty || 'normal').trim().toLowerCase();
+    // 出題問題の選定
     let candidates = this.cachedQuestions.filter(q => q.difficulty === cleanDiff);
     if (candidates.length === 0) {
       candidates = this.cachedQuestions;
     }
+
     if (candidates.length === 0) {
-      alert('出題可能な問題データが見つかりません');
-      this.resetReadyStartButton();
-      this.renderState('idle');
-      return;
+      // フォールバック用ダミー問題
+      this.currentQuestion = {
+        id: `Q${this.roomNumber}-01`,
+        room: String(this.roomNumber),
+        difficulty: cleanDiff,
+        question_text: `AI中枢 第${this.roomNumber}防壁プロトコルを実行せよ。`,
+        media_url: '',
+        answer: 'PASS',
+        hints: ['システム基本設定を確認してください。'],
+        explanation: '標準認証手順です。'
+      };
+    } else {
+      this.currentQuestion = candidates[Math.floor(Math.random() * candidates.length)];
     }
 
-    this.currentQuestion = candidates[Math.floor(Math.random() * candidates.length)];
-    const chosenQid = String(this.currentQuestion.id || '').trim();
-
-    try {
-      await API.startRoomPlaying(this.roomKey, chosenQid);
-      this.startPlay(customTimeLimit);
-    } catch (e) {
-      alert('攻略開始の同期に失敗しました。');
-      this.resetReadyStartButton();
-    }
-  },
-
-  resetReadyStartButton() {
-    const readyBtn = document.querySelector('.btn-ready-start');
-    if (readyBtn) {
-      readyBtn.disabled = false;
-      readyBtn.classList.remove('is-loading');
-      readyBtn.innerHTML = '<span class="material-symbols-outlined icon-lg">play_circle</span> 開始 (START)';
-    }
+    this.startPlay(60);
   },
 
   // ==========================================
-  // 出題・攻略ステート (Playing) 共通処理
+  // 2. Room 2 / Room 3: QRスキャン & データ受領
+  // ==========================================
+
+  openScanner() {
+    QRSync.startScanner('qr-reader', (data) => {
+      this.handleBatonReceived(data);
+    });
+  },
+
+  openPasscodeInput() {
+    QRSync.openPasscodeInput((data) => {
+      this.handleBatonReceived(data);
+    });
+  },
+
+  /**
+   * 前室のQRコード / パスコードからデータを受領して0秒即時出題開始
+   * @param {Object} data
+   */
+  handleBatonReceived(data) {
+    if (!data || !data.groupId) {
+      alert('無効なデータ形式です。');
+      return;
+    }
+
+    this.batonData = {
+      groupId: data.groupId,
+      difficulty: data.difficulty || 'normal',
+      fromRoom: this.roomNumber,
+      q1: data.q1 || null,
+      q2: data.q2 || null,
+      q3: data.q3 || null,
+      totalScore: data.totalScore || 0,
+      totalMisses: data.totalMisses || 0,
+      exQualified: !!data.exQualified
+    };
+
+    this.currentGroupId = this.batonData.groupId;
+    this.currentDifficulty = this.batonData.difficulty;
+    this.updateGroupBadge(this.currentGroupId);
+
+    this.playStartupChime();
+    this.triggerCyberBurstFlash();
+
+    // 問題選定
+    const cleanDiff = String(this.currentDifficulty).trim().toLowerCase();
+    let candidates = this.cachedQuestions.filter(q => q.difficulty === cleanDiff);
+    if (candidates.length === 0) {
+      candidates = this.cachedQuestions;
+    }
+
+    if (candidates.length === 0) {
+      this.currentQuestion = {
+        id: `Q${this.roomNumber}-01`,
+        room: String(this.roomNumber),
+        difficulty: cleanDiff,
+        question_text: `AI中枢 第${this.roomNumber}防壁プロトコルを実行せよ。`,
+        media_url: '',
+        answer: 'PASS',
+        hints: ['システム基本設定を確認してください。'],
+        explanation: '標準認証手順です。'
+      };
+    } else {
+      this.currentQuestion = candidates[Math.floor(Math.random() * candidates.length)];
+    }
+
+    // 0秒で出題スタート
+    this.startPlay(60);
+  },
+
+  // ==========================================
+  // 3. 出題・攻略ステート (Playing) 共通処理
   // ==========================================
 
   startPlay(customTime = 60) {
@@ -832,22 +528,8 @@ const QuizApp = {
     this.autoSubmitOnTimeUp();
   },
 
-  async autoSubmitOnTimeUp() {
-    const safeQid = this.currentQuestion ? String(this.currentQuestion.id || '').trim() : 'TIMEUP';
-    const payload = {
-      groupId: String(this.currentGroupId || '').trim(),
-      roomNumber: this.roomNumber,
-      difficulty: String(this.currentDifficulty || 'normal').trim().toLowerCase(),
-      questionId: safeQid,
-      isCorrect: false,
-      timeLeft: 0,
-      missCount: this.missCount
-    };
-
-    try {
-      await API.submitRoomAnswer(payload);
-    } catch (e) {}
-
+  autoSubmitOnTimeUp() {
+    this.recordRoomAnswer(false, 0);
     this.renderState('answered');
   },
 
@@ -884,8 +566,6 @@ const QuizApp = {
 
     this.stopTimer();
     const isCorrect = this.pendingJudgeResult;
-    const submitBtn = document.getElementById('btn-confirm-judge');
-    submitBtn.disabled = true;
 
     if (isCorrect) {
       this.playAudioTone(880, 0.4, 'sine');
@@ -898,44 +578,112 @@ const QuizApp = {
     }
 
     const safeTimeLeft = Math.max(0, Math.floor(Number(this.timeLeft) || 0));
-    const safeQid = this.currentQuestion ? String(this.currentQuestion.id || '').trim() : '';
+    this.recordRoomAnswer(isCorrect, safeTimeLeft);
 
-    const payload = {
-      groupId: String(this.currentGroupId || '').trim(),
-      roomNumber: this.roomNumber,
-      difficulty: String(this.currentDifficulty || 'normal').trim().toLowerCase(),
-      questionId: safeQid,
-      isCorrect: isCorrect,
-      timeLeft: safeTimeLeft,
-      missCount: this.missCount
+    this.closeJudgeModal();
+    this.renderState('answered');
+  },
+
+  /**
+   * 自室の解答結果をバトンデータに統合・蓄積
+   */
+  recordRoomAnswer(isCorrect, safeTimeLeft) {
+    const qResult = {
+      id: this.currentQuestion ? String(this.currentQuestion.id || '') : `Q${this.roomNumber}-01`,
+      diff: this.currentDifficulty,
+      ok: isCorrect,
+      t: safeTimeLeft,
+      m: this.missCount
     };
 
-    try {
-      const res = await API.submitRoomAnswer(payload);
-      if (res && res.success) {
-        this.closeJudgeModal();
-        this.renderState('answered');
-      } else {
-        alert('解答の記録に失敗しました。');
-      }
-    } catch (e) {
-      alert('通信エラーが発生しました。再度送信をお試しください。');
-    } finally {
-      submitBtn.disabled = false;
+    if (this.roomNumber === 1) {
+      this.batonData.q1 = qResult;
+    } else if (this.roomNumber === 2) {
+      this.batonData.q2 = qResult;
+    } else if (this.roomNumber === 3) {
+      this.batonData.q3 = qResult;
     }
+
+    this.batonData.fromRoom = this.roomNumber;
+
+    // スコア計算
+    let totalScore = 0;
+    let totalMiss = 0;
+
+    const calcQScore = (q) => {
+      if (!q || !q.ok) return 0;
+      switch (String(q.diff).toLowerCase()) {
+        case 'easy': return 10;
+        case 'normal': return 20;
+        case 'hard': return 30;
+        case 'ex': return 40;
+        default: return 20;
+      }
+    };
+
+    if (this.batonData.q1) {
+      totalScore += calcQScore(this.batonData.q1);
+      totalMiss += this.batonData.q1.m;
+    }
+    if (this.batonData.q2) {
+      totalScore += calcQScore(this.batonData.q2);
+      totalMiss += this.batonData.q2.m;
+    }
+    if (this.batonData.q3) {
+      totalScore += calcQScore(this.batonData.q3);
+      totalMiss += this.batonData.q3.m;
+    }
+
+    // パーフェクトボーナス (+30)
+    if (this.batonData.q1 && this.batonData.q1.ok &&
+        this.batonData.q2 && this.batonData.q2.ok &&
+        this.batonData.q3 && this.batonData.q3.ok) {
+      totalScore += 30;
+    }
+
+    // EX判定
+    const isExQualified = (
+      this.batonData.q1 && this.batonData.q1.diff === 'hard' && this.batonData.q1.ok &&
+      this.batonData.q2 && this.batonData.q2.diff === 'hard' && this.batonData.q2.ok &&
+      this.batonData.q3 && this.batonData.q3.diff === 'hard' && this.batonData.q3.ok
+    );
+
+    this.batonData.totalScore = totalScore;
+    this.batonData.totalMisses = totalMiss;
+    this.batonData.exQualified = isExQualified;
   },
 
   // ==========================================
-  // 画面ステート切り替え描画
+  // 4. 解答後ステート (Answered): QRコード生成表示
+  // ==========================================
+
+  renderAnsweredViewDetails() {
+    // QRコード生成 & 4桁パスコード取得
+    const passcode = QRSync.generateQRCode('qr-code-output', this.batonData);
+
+    const passcodeElem = document.getElementById('backup-passcode-display');
+    if (passcodeElem) {
+      passcodeElem.textContent = passcode || '----';
+    }
+  },
+
+  /**
+   * 「次のお客様へ（初期画面に戻る）」ボタン押下時
+   */
+  resetToIdle() {
+    this.stopTimer();
+    this.stopReadyTimer();
+    this.currentGroupId = null;
+    this.currentQuestion = null;
+    this.renderState('idle');
+  },
+
+  // ==========================================
+  // 5. 画面ステート切り替え描画
   // ==========================================
 
   renderState(state) {
     this.currentState = state;
-
-    if (state !== 'answered') {
-      this.stopRoom3AutoResetCountdown();
-      this.stopBatonHandshake();
-    }
 
     const views = {
       room1Start: document.getElementById('quiz-view-room1-start'),
@@ -952,21 +700,14 @@ const QuizApp = {
 
     if (state === 'idle') {
       if (this.roomKey === 'room1') {
-        this.resetRoom1StartButton();
         if (views.room1Start) views.room1Start.classList.remove('hidden');
       } else {
         if (views.glitchStandby) views.glitchStandby.classList.remove('hidden');
       }
       this.updateGroupBadge('--');
     } else if (state === 'select-diff') {
-      this.resetConfirmDiffButton();
       if (this.roomKey === 'room1' && views.selectDiff) {
         views.selectDiff.classList.remove('hidden');
-      }
-    } else if (state === 'ready') {
-      this.resetReadyStartButton();
-      if ((this.roomKey === 'room2' || this.roomKey === 'room3') && views.ready) {
-        views.ready.classList.remove('hidden');
       }
     } else if (state === 'playing') {
       if (views.play) views.play.classList.remove('hidden');
@@ -975,30 +716,6 @@ const QuizApp = {
         views.answered.classList.remove('hidden');
         this.renderAnsweredViewDetails();
       }
-    }
-  },
-
-  renderAnsweredViewDetails() {
-    const waitNotice = document.getElementById('quiz-view-answered-wait');
-    const moveNotice = document.getElementById('quiz-view-answered-move');
-    const waitTarget = document.getElementById('answered-wait-target-node');
-    const room3ManualBox = document.getElementById('room3-manual-reset-box');
-
-    if (room3ManualBox) room3ManualBox.classList.add('hidden');
-
-    if (this.roomKey === 'room3') {
-      if (waitNotice) waitNotice.classList.add('hidden');
-      if (moveNotice) moveNotice.classList.remove('hidden');
-      if (room3ManualBox) room3ManualBox.classList.remove('hidden');
-      this.startRoom3AutoResetCountdown();
-    } else {
-      if (waitTarget) {
-        waitTarget.textContent = (this.roomKey === 'room1') ? 'NODE 2 [BETA]' : 'NODE 3 [CORE]';
-      }
-      if (waitNotice) waitNotice.classList.remove('hidden');
-      if (moveNotice) moveNotice.classList.add('hidden');
-
-      this.startBatonHandshake();
     }
   },
 
@@ -1014,9 +731,8 @@ const QuizApp = {
       btn.classList.toggle('active', this.isLowBattery);
       btn.innerHTML = this.isLowBattery
         ? '<span class="material-symbols-outlined icon-sm">battery_alert</span> 給電要請'
-        : '<span class="material-symbols-outlined icon-sm">battery_alert</span> バッテリー';
+        : '<span class="material-symbols-outlined icon-sm">battery_alert</span> 給電';
     }
-    await API.reportLowBattery(this.roomKey, this.isLowBattery);
   },
 
   // ==========================================

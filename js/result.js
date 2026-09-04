@@ -1,12 +1,11 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * result.js - 出口／リザルト機（保留トレイ新着左配置・解説画像拡大・総合ランキングボード完全対応）
+ * result.js - 出口／リザルト機（QRコード0秒即時集計 & バックグラウンド非同期保存）
  */
 const ResultApp = {
-  pollingTimer: null,
-  activeGroupId: null,
-  pendingList: [],
-  currentMode: 'detail', // 'detail' (個別リザルト) | 'ranking' (総合ランキング)
+  currentMode: 'detail', // 'detail' (個別成績発表) | 'ranking' (総合ランキング)
+  activeResultData: null,
+  questionsMap: {},
   isCongested: false,
   isLowBattery: false,
   EX_SECRET_KEYWORD: 'しらす',
@@ -18,39 +17,12 @@ const ResultApp = {
     const screen = document.getElementById('result-screen');
     if (screen) screen.classList.remove('hidden');
 
-    this.setupExitListeners();
     this.setupMediaFullscreenModal();
-    this.setupModeTabs();
+    this.showWaitingView();
 
-    try {
-      await API.updateRoomStatus('exit', 'ready');
-    } catch (e) {
-      console.warn('初期接続通知失敗:', e);
-    }
-
-    // 退室ボタン（不要化）の安全な非表示化
-    const finishBtn = document.getElementById('btn-finish-result');
-    if (finishBtn) finishBtn.classList.add('hidden');
-
-    this.startPolling();
-  },
-
-  setupExitListeners() {
-    const notifyExit = () => {
-      const payload = JSON.stringify({ action: 'updateRoomStatus', roomKey: 'exit', status: 'unknown' });
-      if (navigator.sendBeacon) navigator.sendBeacon(CONFIG.GAS_API_URL, payload);
-    };
-
-    window.addEventListener('pagehide', notifyExit);
-    window.addEventListener('beforeunload', notifyExit);
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') {
-        notifyExit();
-      } else if (document.visibilityState === 'visible') {
-        API.updateRoomStatus('exit', this.activeGroupId ? 'playing' : 'ready');
-      }
-    });
+    // 問題マスタのキャッシュロード & バックグラウンド事前取得
+    this.loadCachedQuestionsMap();
+    this.preloadAllQuestions();
   },
 
   setupMediaFullscreenModal() {
@@ -85,207 +57,107 @@ const ResultApp = {
     modal.classList.remove('hidden');
   },
 
-  /**
-   * 「個別リザルト」と「総合ランキング」のナビゲーションタブ配備
-   */
-  setupModeTabs() {
-    const header = document.querySelector('#result-screen .result-header');
-    if (!header) return;
-
-    let tabNav = document.getElementById('result-mode-tab-nav');
-    if (!tabNav) {
-      tabNav = document.createElement('div');
-      tabNav.id = 'result-mode-tab-nav';
-      tabNav.className = 'result-tab-nav';
-      tabNav.innerHTML = `
-        <button id="btn-tab-mode-detail" class="btn btn-sm btn-tab-mode active font-cyber" onclick="ResultApp.switchMode('detail')">
-          <span class="material-symbols-outlined icon-sm">person</span> 個別リザルト
-        </button>
-        <button id="btn-tab-mode-ranking" class="btn btn-sm btn-tab-mode font-cyber" onclick="ResultApp.switchMode('ranking')">
-          <span class="material-symbols-outlined icon-sm">leaderboard</span> 総合ランキング
-        </button>
-      `;
-      header.parentNode.insertBefore(tabNav, header.nextSibling);
-    }
-
-    // ランキング用ビューコンテナの動的作成
-    let rankingView = document.getElementById('result-view-ranking');
-    if (!rankingView) {
-      rankingView = document.createElement('div');
-      rankingView.id = 'result-view-ranking';
-      rankingView.className = 'quiz-view hidden';
-      rankingView.innerHTML = `
-        <div class="card ranking-card cyber-border">
-          <div class="ranking-header">
-            <h2 class="ranking-title font-cyber">
-              <span class="material-symbols-outlined icon-md text-highlight">trophy</span> TOP HACKERS // 総合ランキング
-            </h2>
-            <button class="btn btn-secondary btn-sm" onclick="ResultApp.fetchRanking()">
-              <span class="material-symbols-outlined icon-sm">refresh</span> 更新
-            </button>
-          </div>
-          <div id="ranking-list-container" class="ranking-list-grid">
-            <div class="text-center text-muted py-4">ランキングを集計中...</div>
-          </div>
-        </div>
-      `;
-      const resultScreen = document.getElementById('result-screen');
-      if (resultScreen) resultScreen.appendChild(rankingView);
-    }
-  },
-
-  /**
-   * モード切り替え（個別リザルト / 総合ランキング）
-   */
-  switchMode(mode) {
-    this.currentMode = mode;
-
-    const btnDetail = document.getElementById('btn-tab-mode-detail');
-    const btnRanking = document.getElementById('btn-tab-mode-ranking');
-    const queueSection = document.querySelector('#result-screen .queue-section');
-    const viewWaiting = document.getElementById('result-view-waiting');
-    const viewLoading = document.getElementById('result-view-loading');
-    const viewContent = document.getElementById('result-view-content');
-    const viewRanking = document.getElementById('result-view-ranking');
-
-    if (btnDetail) btnDetail.classList.toggle('active', mode === 'detail');
-    if (btnRanking) btnRanking.classList.toggle('active', mode === 'ranking');
-
-    if (mode === 'detail') {
-      if (viewRanking) viewRanking.classList.add('hidden');
-      if (queueSection) queueSection.classList.remove('hidden');
-
-      if (this.activeGroupId) {
-        if (viewContent) viewContent.classList.remove('hidden');
-        if (viewWaiting) viewWaiting.classList.add('hidden');
-      } else {
-        if (viewContent) viewContent.classList.add('hidden');
-        if (viewWaiting) viewWaiting.classList.remove('hidden');
+  loadCachedQuestionsMap() {
+    const cached = AppStorage.getCachedQuestions() || [];
+    cached.forEach(q => {
+      if (q && q.id) {
+        this.questionsMap[String(q.id).trim()] = q;
       }
-      this.fetchPendingQueue();
-    } else if (mode === 'ranking') {
-      if (queueSection) queueSection.classList.add('hidden');
-      if (viewWaiting) viewWaiting.classList.add('hidden');
-      if (viewLoading) viewLoading.classList.add('hidden');
-      if (viewContent) viewContent.classList.add('hidden');
-      if (viewRanking) viewRanking.classList.remove('hidden');
-
-      this.fetchRanking();
-    }
-  },
-
-  async toggleCongestionAlert() {
-    this.isCongested = !this.isCongested;
-    const btn = document.getElementById('btn-exit-congestion');
-    if (btn) {
-      btn.classList.toggle('btn-danger', this.isCongested);
-      btn.classList.toggle('btn-secondary', !this.isCongested);
-      btn.innerHTML = this.isCongested
-        ? '<span class="material-symbols-outlined icon-sm">warning</span> 出口混雑中 [警報中]'
-        : '<span class="material-symbols-outlined icon-sm">group</span> 出口混雑を報告';
-    }
-    await API.reportExitCongestion(this.isCongested);
-  },
-
-  async toggleBatteryAlert() {
-    this.isLowBattery = !this.isLowBattery;
-    const btn = document.getElementById('btn-battery-result');
-    if (btn) {
-      btn.classList.toggle('active', this.isLowBattery);
-      btn.innerHTML = this.isLowBattery
-        ? '<span class="material-symbols-outlined icon-sm">battery_alert</span> 給電要請'
-        : '<span class="material-symbols-outlined icon-sm">battery_alert</span> バッテリー';
-    }
-    await API.reportLowBattery('exit', this.isLowBattery);
-  },
-
-  startPolling() {
-    this.pollCurrentModeData();
-    if (this.pollingTimer) clearInterval(this.pollingTimer);
-    this.pollingTimer = setInterval(() => this.pollCurrentModeData(), CONFIG.POLLING_INTERVAL_MS);
-  },
-
-  pollCurrentModeData() {
-    if (this.currentMode === 'detail') {
-      this.fetchPendingQueue();
-    } else if (this.currentMode === 'ranking') {
-      this.fetchRanking();
-    }
-  },
-
-  async fetchPendingQueue() {
-    try {
-      const res = await API.getPendingResults();
-      if (res && res.success) {
-        this.pendingList = res.pendingResults || [];
-        this.renderQueueRack();
-      }
-    } catch (e) {
-      console.error('Pending queue fetch error:', e);
-    }
-  },
-
-  /**
-   * 保留トレイの描画（※新着グループが一番左に来るように配列を逆順にして描画）
-   */
-  renderQueueRack() {
-    const rack = document.getElementById('pending-queue-rack');
-    const badgeCount = document.getElementById('pending-count-badge');
-    if (!rack) return;
-
-    if (badgeCount) badgeCount.textContent = `${this.pendingList.length}組`;
-
-    rack.innerHTML = '';
-    if (this.pendingList.length === 0) {
-      rack.innerHTML = '<div class="queue-empty-msg">到着待ちグループはありません</div>';
-      if (!this.activeGroupId && this.currentMode === 'detail') {
-        this.showWaitingView();
-      }
-      return;
-    }
-
-    // ★★★ 新しいグループが左（先頭）に来るように配列を反転 ★★★
-    const displayList = [...this.pendingList].reverse();
-
-    displayList.forEach(item => {
-      const card = document.createElement('button');
-      card.className = `queue-chip ${this.activeGroupId === item.groupId ? 'active' : ''}`;
-      card.innerHTML = `
-        <span class="chip-group-id">${item.groupId}</span>
-        <span class="chip-score">${Math.max(0, Number(item.totalScore) || 0)}点</span>
-        ${item.exQualified ? '<span class="chip-ex-tag">EX</span>' : ''}
-      `;
-      // チップをタップするとそのグループの成績へ即座に切り替え
-      card.onclick = () => this.selectGroupResult(item.groupId);
-      rack.appendChild(card);
     });
   },
 
-  async selectGroupResult(groupId) {
-    this.activeGroupId = groupId;
-    this.renderQueueRack();
-    this.showLoadingView();
-
+  async preloadAllQuestions() {
     try {
-      await API.updateRoomStatus('exit', 'playing');
-      const res = await API.getGroupResult(groupId);
-      if (res && res.success) {
-        this.renderResultDetail(res.result);
-      } else {
-        alert('成績データの取得に失敗しました');
-        this.showWaitingView();
+      const res = await API.getQuestions();
+      if (res && res.success && Array.isArray(res.questions)) {
+        res.questions.forEach(q => {
+          if (q && q.id) {
+            this.questionsMap[String(q.id).trim()] = q;
+          }
+        });
+        AppStorage.cacheQuestions(res.questions);
       }
     } catch (e) {
-      alert('通信エラーが発生しました');
-      this.showWaitingView();
+      console.warn('[ResultApp] 問題マスタ更新スキップ（キャッシュ利用）:', e);
     }
   },
+
+  // ==========================================
+  // 1. QRスキャン & テンキー入力による成績受領
+  // ==========================================
+
+  openScanner() {
+    QRSync.startScanner('qr-reader', (data) => {
+      this.handleFinalResultReceived(data);
+    });
+  },
+
+  openPasscodeInput() {
+    QRSync.openPasscodeInput((data) => {
+      this.handleFinalResultReceived(data);
+    });
+  },
+
+  /**
+   * 最終QRコード読み取り時の0秒即時展開処理
+   * @param {Object} data
+   */
+  handleFinalResultReceived(data) {
+    if (!data || !data.groupId) {
+      alert('無効なリザルトデータです。');
+      return;
+    }
+
+    this.activeResultData = data;
+
+    // ① 0.01秒で画面に成績を描画
+    this.renderResultDetail(data);
+
+    // ② 裏で1回だけスプレッドシート（GAS）へ非同期保存（ユーザーを待たせない）
+    this.saveFinalResultToGAS(data);
+  },
+
+  /**
+   * スプレッドシート（GAS）へのバックグラウンド非同期保存
+   * @param {Object} data
+   */
+  async saveFinalResultToGAS(data) {
+    try {
+      const payload = {
+        action: 'submitFinalResult',
+        groupId: data.groupId,
+        difficulty: data.difficulty || 'normal',
+        isExEntry: data.difficulty === 'ex',
+        q1: data.q1 || {},
+        q2: data.q2 || {},
+        q3: data.q3 || {},
+        totalScore: data.totalScore || 0,
+        totalMisses: data.totalMisses || 0,
+        exQualified: !!data.exQualified,
+        timestamp: new Date().toISOString()
+      };
+
+      // API経由でGASに保存
+      if (typeof API.submitFinalResult === 'function') {
+        await API.submitFinalResult(payload);
+      } else {
+        await API.post(payload);
+      }
+      console.log('[ResultApp] スプレッドシート非同期保存完了:', data.groupId);
+    } catch (error) {
+      console.warn('[ResultApp] スプレッドシート非同期保存エラー (ローカル表示は継続):', error);
+    }
+  },
+
+  // ==========================================
+  // 2. 成績表示メインレンダラー
+  // ==========================================
 
   renderResultDetail(data) {
     const groupIdElem = document.getElementById('result-group-id');
     if (groupIdElem) groupIdElem.textContent = data.groupId;
 
-    // スコア・統計表示
+    // スコア・誤答回数表示
     const scoreVal = document.getElementById('result-total-score');
     if (scoreVal) scoreVal.textContent = Math.max(0, Math.floor(Number(data.totalScore) || 0));
 
@@ -293,13 +165,17 @@ const ResultApp = {
     if (missVal) missVal.textContent = Math.max(0, Math.floor(Number(data.totalMisses) || 0));
 
     // パーフェクトボーナス獲得判定 (全問正解)
-    const isPerfect = data.q1.isCorrect && data.q2.isCorrect && data.q3.isCorrect;
+    const q1Ok = data.q1 ? (data.q1.ok === true) : false;
+    const q2Ok = data.q2 ? (data.q2.ok === true) : false;
+    const q3Ok = data.q3 ? (data.q3.ok === true) : false;
+    const isPerfect = q1Ok && q2Ok && q3Ok;
+
     const bonusBadge = document.getElementById('result-bonus-badge');
     if (bonusBadge) {
       bonusBadge.classList.toggle('hidden', !isPerfect);
     }
 
-    // EXバナー制御
+    // EXモード挑戦権獲得バナー制御
     const exBanner = document.getElementById('result-ex-banner');
     const normalBanner = document.getElementById('result-normal-banner');
 
@@ -313,11 +189,11 @@ const ResultApp = {
       if (normalBanner) normalBanner.classList.remove('hidden');
     }
 
-    // 各問題の詳細カード（問題画像サムネイル＆タップ拡大対応）
+    // 各問題の詳細カード生成
     const questions = [
-      { key: 'q1', num: 1, info: data.q1 },
-      { key: 'q2', num: 2, info: data.q2 },
-      { key: 'q3', num: 3, info: data.q3 }
+      { num: 1, info: data.q1 },
+      { num: 2, info: data.q2 },
+      { num: 3, info: data.q3 }
     ];
 
     const container = document.getElementById('result-cards-container');
@@ -325,25 +201,34 @@ const ResultApp = {
       container.innerHTML = '';
 
       questions.forEach(q => {
-        const card = document.createElement('div');
-        const isCorrect = q.info.isCorrect;
-        card.className = `result-question-card ${isCorrect ? 'is-correct' : 'is-wrong'}`;
+        const qInfo = q.info || {};
+        const qId = String(qInfo.id || `Q${q.num}-01`).trim();
+        const master = this.questionsMap[qId] || {};
 
-        const safeTimeLeft = Math.max(0, Math.floor(Number(q.info.timeLeft) || 0));
-        const safeMissCount = Math.max(0, Math.floor(Number(q.info.missCount) || 0));
-        const mediaUrl = q.info.media_url || '';
+        const isCorrect = qInfo.ok === true;
+        const diffText = String(qInfo.diff || master.difficulty || 'normal').toUpperCase();
+        const safeTimeLeft = Math.max(0, Math.floor(Number(qInfo.t) || 0));
+        const safeMissCount = Math.max(0, Math.floor(Number(qInfo.m) || 0));
+
+        const qText = master.question_text || `第${q.num}問の課題`;
+        const qAns = master.answer || '--';
+        const qExp = master.explanation || '';
+        const mediaUrl = master.media_url || '';
         const isVideo = !!mediaUrl.match(/\.(mp4|webm|mov)$/i);
+
+        const card = document.createElement('div');
+        card.className = `result-question-card ${isCorrect ? 'is-correct' : 'is-wrong'}`;
 
         card.innerHTML = `
           <div class="result-card-header">
-            <span class="result-q-title font-cyber">第${q.num}問 (${String(q.info.difficulty).toUpperCase()})</span>
+            <span class="result-q-title font-cyber">第${q.num}問 [${diffText}] (${qId})</span>
             <span class="result-judge-badge ${isCorrect ? 'badge-correct' : 'badge-wrong'}">
               <span class="material-symbols-outlined icon-xs">${isCorrect ? 'check_circle' : 'cancel'}</span>
-              ${isCorrect ? '正解 [クリア]' : '不正解 [突破失敗]'}
+              ${isCorrect ? '正解 [クリア]' : '不正解 [防衛失敗]'}
             </span>
           </div>
           <div class="result-card-body">
-            <p class="result-q-text"><strong>問題:</strong> ${q.info.questionText || '--'}</p>
+            <p class="result-q-text"><strong>問題:</strong> ${qText}</p>
 
             ${mediaUrl ? `
               <div class="result-media-wrapper">
@@ -356,8 +241,8 @@ const ResultApp = {
               </div>
             ` : ''}
 
-            <p class="result-q-answer">模範解答: <span class="text-highlight font-bold font-mono">${q.info.answer || '--'}</span></p>
-            ${q.info.explanation ? `<p class="result-q-exp"><strong>解説:</strong> ${q.info.explanation}</p>` : ''}
+            <p class="result-q-answer">模範解答: <span class="text-highlight font-bold font-mono">${qAns}</span></p>
+            ${qExp ? `<p class="result-q-exp"><strong>解説:</strong> ${qExp}</p>` : ''}
             <div class="result-q-stats-row font-mono">
               <span>残り時間: <strong class="text-highlight">${safeTimeLeft}秒</strong></span>
               <span>誤答ペナルティ: <strong class="text-warning">${safeMissCount}回</strong></span>
@@ -379,17 +264,61 @@ const ResultApp = {
       });
     }
 
-    const finishBtn = document.getElementById('btn-finish-result');
-    if (finishBtn) finishBtn.classList.add('hidden');
-
     this.showContentView();
   },
 
   /**
-   * 総合ランキング一覧の取得 & 描画
+   * 「次のお客様をスキャン」ボタンで待機画面にリセット
    */
+  resetToWaiting() {
+    this.activeResultData = null;
+    const groupIdElem = document.getElementById('result-group-id');
+    if (groupIdElem) groupIdElem.textContent = '未スキャン';
+    this.showWaitingView();
+  },
+
+  // ==========================================
+  // 3. 総合ランキング機能
+  // ==========================================
+
+  switchMode(mode) {
+    this.currentMode = mode;
+
+    const btnDetail = document.getElementById('btn-tab-mode-detail');
+    const btnRanking = document.getElementById('btn-tab-mode-ranking');
+    const viewWaiting = document.getElementById('result-view-waiting');
+    const viewLoading = document.getElementById('result-view-loading');
+    const viewContent = document.getElementById('result-view-content');
+    const viewRanking = document.getElementById('result-view-ranking');
+
+    if (btnDetail) btnDetail.classList.toggle('active', mode === 'detail');
+    if (btnRanking) btnRanking.classList.toggle('active', mode === 'ranking');
+
+    if (mode === 'detail') {
+      if (viewRanking) viewRanking.classList.add('hidden');
+      if (this.activeResultData) {
+        if (viewContent) viewContent.classList.remove('hidden');
+        if (viewWaiting) viewWaiting.classList.add('hidden');
+      } else {
+        if (viewContent) viewContent.classList.add('hidden');
+        if (viewWaiting) viewWaiting.classList.remove('hidden');
+      }
+    } else if (mode === 'ranking') {
+      if (viewWaiting) viewWaiting.classList.add('hidden');
+      if (viewLoading) viewLoading.classList.add('hidden');
+      if (viewContent) viewContent.classList.add('hidden');
+      if (viewRanking) viewRanking.classList.remove('hidden');
+
+      this.fetchRanking();
+    }
+  },
+
   async fetchRanking() {
     const listContainer = document.getElementById('ranking-list-container');
+    if (listContainer) {
+      listContainer.innerHTML = '<div class="text-center text-muted py-4 font-cyber">最新ランキングを集計中...</div>';
+    }
+
     try {
       const res = await API.getRanking();
       if (res && res.success) {
@@ -431,7 +360,7 @@ const ResultApp = {
         </div>
         <div class="ranking-col-group">
           <strong class="ranking-group-id font-mono">${item.groupId}</strong>
-          ${item.exQualified ? '<span class="badge badge-ex font-cyber">EX OVERRIDE</span>' : ''}
+          ${item.isExEntry || item.exQualified ? '<span class="badge badge-ex font-cyber">EX OVERRIDE</span>' : ''}
         </div>
         <div class="ranking-col-score">
           <span class="ranking-score-val font-cyber">${item.totalScore} <small>pts</small></span>
@@ -445,6 +374,36 @@ const ResultApp = {
       `;
       container.appendChild(row);
     });
+  },
+
+  // ==========================================
+  // 4. アラート & ビュー切り替え
+  // ==========================================
+
+  async toggleCongestionAlert() {
+    this.isCongested = !this.isCongested;
+    const btn = document.getElementById('btn-exit-congestion');
+    if (btn) {
+      btn.classList.toggle('btn-danger', this.isCongested);
+      btn.classList.toggle('btn-secondary', !this.isCongested);
+      btn.innerHTML = this.isCongested
+        ? '<span class="material-symbols-outlined icon-sm">warning</span> 出口混雑中 [警報中]'
+        : '<span class="material-symbols-outlined icon-sm">group</span> 出口混雑を報告';
+    }
+    try {
+      await API.reportExitCongestion(this.isCongested);
+    } catch (e) {}
+  },
+
+  async toggleBatteryAlert() {
+    this.isLowBattery = !this.isLowBattery;
+    const btn = document.getElementById('btn-battery-result');
+    if (btn) {
+      btn.classList.toggle('active', this.isLowBattery);
+      btn.innerHTML = this.isLowBattery
+        ? '<span class="material-symbols-outlined icon-sm">battery_alert</span> 給電要請'
+        : '<span class="material-symbols-outlined icon-sm">battery_alert</span> 給電';
+    }
   },
 
   showWaitingView() {
