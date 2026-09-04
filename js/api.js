@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * api.js - 通信レイヤー (リトライ・指数バックオフ・排他保護対応)
+ * js/api.js - 通信レイヤー (リトライ・指数バックオフ・新バックエンドAPI完全対応)
  */
 const API = {
   /**
@@ -13,7 +13,7 @@ const API = {
 
     while (attempt < maxRetries) {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), CONFIG.FETCH_TIMEOUT_MS);
+      const timeoutId = setTimeout(() => controller.abort(), CONFIG.FETCH_TIMEOUT_MS || 10000);
       const fetchOptions = { ...options, signal: controller.signal };
 
       try {
@@ -27,7 +27,7 @@ const API = {
         const data = await response.json();
 
         // GAS側のLockTimeout等のエラーを検知した場合はリトライ対象にする
-        if (data && data.success === false && data.error && data.error.includes('LockTimeout')) {
+        if (data && data.success === false && data.error && String(data.error).includes('LockTimeout')) {
           throw new Error('GAS_LOCK_TIMEOUT');
         }
 
@@ -73,72 +73,103 @@ const API = {
   },
 
   // ==========================================
-  // 自律分散バトンリレー API
+  // 1. 入口機 (Entry) API
   // ==========================================
 
   /**
-   * Room 1: STARTボタン押下で新規グループ割当 & 難易度選択開始
+   * スタッフQRをスキャンしてグループ受付・登録
+   * @param {Object} payload { device_id, group_name, staff_name, difficulty, is_ex_entry }
    */
-  async startRoom1(groupId = '') {
+  async registerGroup(payload) {
     return await this.post({
-      action: 'startRoom1',
-      groupId: groupId
-    });
-  },
-
-  /**
-   * Room 1: 難易度選択の確定 & 出題開始
-   */
-  async confirmRoom1Difficulty(difficulty, questionId) {
-    return await this.post({
-      action: 'confirmRoom1Difficulty',
-      difficulty: difficulty,
-      questionId: questionId
-    });
-  },
-
-  /**
-   * Room 2 / Room 3: 30秒経過または開始ボタン押下で出題開始
-   */
-  async startRoomPlaying(roomKey, questionId) {
-    return await this.post({
-      action: 'startRoomPlaying',
-      roomKey: roomKey,
-      questionId: questionId
-    });
-  },
-
-  /**
-   * 各ブース: 解答確定・提出 (自ブースの回答ログ記録)
-   */
-  async submitRoomAnswer(payload) {
-    return await this.post({
-      action: 'submitRoomAnswer',
+      action: 'registerGroup',
       ...payload
     });
   },
 
   /**
-   * 前の部屋から次の部屋へ安全にバトンを渡すハンドシェイクAPI
-   * 次室が受け入れ可能な状態のときのみ transferred: true が返る
+   * 入口モニタ用: 全ブース（room1, room2, room3, shooting）の稼働状況取得
    */
-  async passBatonToNext(fromRoomKey, groupId = '', difficulty = '') {
-    return await this.post({
-      action: 'passBatonToNext',
-      fromRoomKey: fromRoomKey,
-      groupId: groupId,
-      difficulty: difficulty
+  async getBoothStatus() {
+    return await this.get({
+      action: 'getBoothStatus'
     });
   },
 
   // ==========================================
-  // 共通データ取得 & 状態同期
+  // 2. クイズ問題機 (Room 1〜3) API
   // ==========================================
 
-  async getStatus() {
-    return await this.get({ action: 'getStatus' });
+  /**
+   * スタッフQRをスキャンして出題開始
+   * @param {Object} payload { booth_id, device_id }
+   */
+  async startQuizRoom(payload) {
+    return await this.post({
+      action: 'startQuizRoom',
+      ...payload
+    });
   },
 
+  /**
+   * 解答判定・スコア送信
+   * @param {Object} payload { booth_id, device_id, group_id, question_id, is_correct, time_left, miss_count }
+   */
+  async submitQuizAnswer(payload) {
+    return await this.post({
+      action: 'submitQuizAnswer',
+      ...payload
+    });
+  },
+
+  // ==========================================
+  // 3. 射撃フェーズ機 (Shooting) API
+  // ==========================================
+
+  /**
+   * 射撃得点の保存
+   * @param {Object} payload { device_id, shooting_score }
+   */
+  async submitShootingScore(payload) {
+    return await this.post({
+      action: 'submitShootingScore',
+      ...payload
+    });
+  },
+
+  // ==========================================
+  // 4. 出口／リザルト機 (Exit) API
+  // ==========================================
+
+  /**
+   * 最終成績集計の取得 & スタッフ端末の紐付け解除
+   * @param {Object} payload { device_id }
+   */
+  async getGroupSummaryAndRelease(payload) {
+    return await this.post({
+      action: 'getGroupSummaryAndRelease',
+      ...payload
+    });
+  },
+
+  /**
+   * 総合ランキング一覧取得
+   */
+  async getRanking() {
+    return await this.get({
+      action: 'getRanking'
+    });
+  },
+
+  // ==========================================
+  // 5. 共通マスタ・参照 API
+  // ==========================================
+
+  /**
+   * 問題マスタ一覧取得
+   * @param {string} [room]
+   * @param {string} [difficulty]
+   */
   async getQuestions(room = '', difficulty = '') {
     const params = { action: 'getQuestions' };
     if (room) params.room = room;
@@ -146,83 +177,23 @@ const API = {
     return await this.get(params);
   },
 
-  async updateRoomStatus(roomKey, status, questionId, timeLeft, lastJudge) {
-    return await this.post({
-      action: 'updateRoomStatus',
-      roomKey: roomKey,
-      status: status,
-      questionId: questionId,
-      timeLeft: timeLeft,
-      lastJudge: lastJudge
-    });
-  },
-
-  async reportLowBattery(roomKey, isLow) {
-    return await this.post({
-      action: 'reportLowBattery',
-      roomKey: roomKey,
-      lowBattery: !!isLow
+  /**
+   * 全体システム状態取得
+   */
+  async getStatus() {
+    return await this.get({
+      action: 'getStatus'
     });
   },
 
   // ==========================================
-  // 出口機専用 API
+  // 6. 管理者／システム制御 API
   // ==========================================
-
-  async getPendingResults() {
-    return await this.get({ action: 'getPendingResults' });
-  },
-
-  async getGroupResult(groupId) {
-    return await this.get({ action: 'getGroupResult', groupId: groupId });
-  },
 
   /**
-   * 総合ランキング一覧取得API
+   * 緊急一時停止の切り替え
+   * @param {boolean} isPaused
    */
-  async getRanking() {
-    return await this.get({ action: 'getRanking' });
-  },
-
-  async finishGroupResult(groupId) {
-    return await this.post({
-      action: 'finishGroupResult',
-      groupId: groupId
-    });
-  },
-
-  async reportExitCongestion(isCongested) {
-    return await this.post({
-      action: 'reportExitCongestion',
-      isCongested: !!isCongested
-    });
-  },
-
-  // ==========================================
-  // 管理者機専用 API
-  // ==========================================
-
-  async setPaceSignal(paceSignal) {
-    return await this.post({
-      action: 'setPaceSignal',
-      paceSignal: paceSignal
-    });
-  },
-
-  async toggleInfoPause(isPaused) {
-    return await this.post({
-      action: 'toggleInfoPause',
-      isPaused: !!isPaused
-    });
-  },
-
-  async setGlobalTimeLimit(timeLimit) {
-    return await this.post({
-      action: 'setGlobalTimeLimit',
-      timeLimit: timeLimit
-    });
-  },
-
   async toggleEmergencyPause(isPaused) {
     return await this.post({
       action: 'toggleEmergencyPause',
@@ -230,9 +201,56 @@ const API = {
     });
   },
 
+  /**
+   * 機材調整中/待機画面表示の切り替え
+   * @param {boolean} isPaused
+   */
+  async toggleInfoPause(isPaused) {
+    return await this.post({
+      action: 'toggleInfoPause',
+      isPaused: !!isPaused
+    });
+  },
+
+  /**
+   * ペースシグナル指示の送信 ('none' | 'wait' | 'push')
+   * @param {string} paceSignal
+   */
+  async setPaceSignal(paceSignal) {
+    return await this.post({
+      action: 'setPaceSignal',
+      paceSignal: paceSignal
+    });
+  },
+
+  /**
+   * 全体制限時間の更新
+   * @param {number} timeLimit
+   */
+  async setGlobalTimeLimit(timeLimit) {
+    return await this.post({
+      action: 'setGlobalTimeLimit',
+      timeLimit: timeLimit
+    });
+  },
+
+  /**
+   * 全システムステータスの初期化
+   */
   async resetAllStatus() {
     return await this.post({
       action: 'resetAllStatus'
+    });
+  },
+
+  /**
+   * 出口混雑状況の報告
+   * @param {boolean} isCongested
+   */
+  async reportExitCongestion(isCongested) {
+    return await this.post({
+      action: 'reportExitCongestion',
+      isCongested: !!isCongested
     });
   }
 };

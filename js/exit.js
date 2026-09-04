@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * js/exit.js - 出口／リザルト機制御 (成績発表・EX合言葉・ランキング)
+ * js/exit.js - 出口／リザルト機制御 (成績発表・EX合言葉・ランキング・端末解除)
  */
 
 const ExitApp = {
@@ -28,7 +28,9 @@ const ExitApp = {
           }
         });
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[ExitApp] 問題マスタ事前ロードスキップ:', e);
+    }
   },
 
   /**
@@ -42,6 +44,7 @@ const ExitApp = {
 
   /**
    * 成績集計 & 端末解除API
+   * @param {Object} qrData
    */
   async handleFinalResult(qrData) {
     if (!qrData || !qrData.device_id) {
@@ -66,18 +69,26 @@ const ExitApp = {
 
   /**
    * 成績画面レンダリング
+   * @param {Object} summary
    */
   renderResultDetail(summary) {
     this.renderViewState('content');
 
-    document.getElementById('exit-group-badge').textContent = `GROUP: ${summary.groupId} (${summary.groupName})`;
-    document.getElementById('exit-quiz-score').textContent = summary.quizScore;
-    document.getElementById('exit-shooting-score').textContent = summary.shootingScore;
-    document.getElementById('exit-total-score').textContent = summary.totalScore;
+    const groupBadge = document.getElementById('exit-group-badge');
+    const quizScoreElem = document.getElementById('exit-quiz-score');
+    const shootingScoreElem = document.getElementById('exit-shooting-score');
+    const totalScoreElem = document.getElementById('exit-total-score');
+
+    if (groupBadge) groupBadge.textContent = `GROUP: ${summary.groupId || '--'} (${summary.groupName || ''})`;
+    if (quizScoreElem) quizScoreElem.textContent = summary.quizScore !== undefined ? summary.quizScore : 0;
+    if (shootingScoreElem) shootingScoreElem.textContent = summary.shootingScore !== undefined ? summary.shootingScore : 0;
+    if (totalScoreElem) totalScoreElem.textContent = summary.totalScore !== undefined ? summary.totalScore : 0;
 
     // パーフェクトボーナス表示
     const bonusBadge = document.getElementById('exit-bonus-badge');
-    if (bonusBadge) bonusBadge.classList.toggle('hidden', !summary.isPerfect);
+    if (bonusBadge) {
+      bonusBadge.classList.toggle('hidden', !summary.isPerfect);
+    }
 
     // EX達成バナー制御
     const exBanner = document.getElementById('exit-ex-banner');
@@ -138,7 +149,8 @@ const ExitApp = {
 
   resetToWaiting() {
     this.renderViewState('waiting');
-    document.getElementById('exit-group-badge').textContent = 'GROUP: --';
+    const groupBadge = document.getElementById('exit-group-badge');
+    if (groupBadge) groupBadge.textContent = 'GROUP: --';
   },
 
   switchTab(tabName) {
@@ -155,7 +167,8 @@ const ExitApp = {
 
     if (tabName === 'detail') {
       if (viewRanking) viewRanking.classList.add('hidden');
-      if (document.getElementById('exit-total-score').textContent !== '0') {
+      const totalElem = document.getElementById('exit-total-score');
+      if (totalElem && totalElem.textContent !== '0') {
         if (viewContent) viewContent.classList.remove('hidden');
       } else {
         if (viewWaiting) viewWaiting.classList.remove('hidden');
@@ -170,12 +183,16 @@ const ExitApp = {
 
   async fetchRanking() {
     const listContainer = document.getElementById('exit-ranking-list-container');
-    if (listContainer) listContainer.innerHTML = '<div class="text-center text-muted py-4 font-cyber">最新ランキングを集計中...</div>';
+    if (listContainer) {
+      listContainer.innerHTML = '<div class="text-center text-muted py-4 font-cyber">最新ランキングを集計中...</div>';
+    }
 
     try {
       const res = await API.getRanking();
       if (res && res.success && Array.isArray(res.ranking)) {
         this.renderRankingList(res.ranking);
+      } else {
+        if (listContainer) listContainer.innerHTML = '<div class="text-center text-danger py-4">ランキング取得エラー</div>';
       }
     } catch (e) {
       if (listContainer) listContainer.innerHTML = '<div class="text-center text-danger py-4">ランキング取得エラー</div>';
@@ -197,15 +214,15 @@ const ExitApp = {
           <span class="rank-num font-cyber">${item.rank}</span>
         </div>
         <div class="ranking-col-group">
-          <strong class="ranking-group-id font-mono">${item.groupId}</strong>
-          <span class="font-bold">${item.groupName}</span>
+          <strong class="ranking-group-id font-mono">${item.groupId || '--'}</strong>
+          <span class="font-bold">${item.groupName || ''}</span>
           ${item.isExEntry || item.exQualified ? '<span class="badge badge-ex font-cyber">EX</span>' : ''}
         </div>
         <div class="ranking-col-score">
           <span class="ranking-score-val font-cyber">${item.totalScore} <small>pts</small></span>
         </div>
         <div class="ranking-col-miss font-mono text-warning">
-          <span>MISS: ${item.totalMisses}</span>
+          <span>MISS: ${item.totalMisses || 0}</span>
         </div>
         <div class="ranking-col-time text-muted font-mono">
           <span>${item.timestamp || ''}</span>

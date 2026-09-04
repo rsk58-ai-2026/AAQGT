@@ -41,6 +41,7 @@ const QuizApp = {
 
   /**
    * 出題開始
+   * @param {Object} qrData
    */
   async handleStartQuiz(qrData) {
     if (!qrData || !qrData.device_id) {
@@ -57,9 +58,10 @@ const QuizApp = {
       });
 
       if (res && res.success && res.question) {
-        this.activeGroupId = res.group.groupId;
+        this.activeGroupId = res.group ? res.group.groupId : 'G-??';
         this.currentQuestion = res.question;
-        this.startPlay(res.group.difficulty || 'normal');
+        const diff = (res.group && res.group.difficulty) ? res.group.difficulty : (qrData.difficulty || 'normal');
+        this.startPlay(diff);
       } else {
         alert('出題開始エラー: ' + (res.error || 'グループが特定できません'));
       }
@@ -74,10 +76,15 @@ const QuizApp = {
     this.missCount = 0;
     this.updateMissCounterUI();
 
-    document.getElementById('quiz-group-badge').textContent = `GROUP: ${this.activeGroupId}`;
-    document.getElementById('quiz-diff-tag').textContent = diff.toUpperCase();
-    document.getElementById('quiz-q-id').textContent = this.currentQuestion.id || `Q${this.roomNumber}-01`;
-    document.getElementById('quiz-question-text').textContent = this.currentQuestion.question_text || '';
+    const groupBadge = document.getElementById('quiz-group-badge');
+    const diffTag = document.getElementById('quiz-diff-tag');
+    const qIdElem = document.getElementById('quiz-q-id');
+    const qTextElem = document.getElementById('quiz-question-text');
+
+    if (groupBadge) groupBadge.textContent = `GROUP: ${this.activeGroupId}`;
+    if (diffTag) diffTag.textContent = diff.toUpperCase();
+    if (qIdElem) qIdElem.textContent = this.currentQuestion.id || `Q${this.roomNumber}-01`;
+    if (qTextElem) qTextElem.textContent = this.currentQuestion.question_text || '';
 
     // メディア描画
     this.renderMedia(this.currentQuestion.media_url);
@@ -118,6 +125,7 @@ const QuizApp = {
       const img = document.createElement('img');
       img.src = mediaUrl;
       img.className = 'quiz-media';
+      img.alt = '問題画像';
       img.onclick = () => AppUI.openMediaFullscreen(mediaUrl, false);
       container.appendChild(img);
     }
@@ -189,8 +197,8 @@ const QuizApp = {
   updateTimerUI() {
     const timerElem = document.getElementById('quiz-timer');
     const timerBox = document.getElementById('quiz-timer-box');
-    const min = Math.floor(this.timeLeft / 60);
-    const sec = this.timeLeft % 60;
+    const min = Math.floor(Math.max(0, this.timeLeft) / 60);
+    const sec = Math.max(0, this.timeLeft) % 60;
     const formatted = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 
     if (timerElem) timerElem.textContent = formatted;
@@ -201,6 +209,7 @@ const QuizApp = {
 
   /**
    * スタッフ判定（正解 / 不正解）
+   * @param {boolean} isCorrect
    */
   async submitJudge(isCorrect) {
     this.stopTimer();
@@ -246,7 +255,8 @@ const QuizApp = {
     this.activeGroupId = null;
     this.currentQuestion = null;
     this.renderViewState('idle');
-    document.getElementById('quiz-group-badge').textContent = 'GROUP: --';
+    const groupBadge = document.getElementById('quiz-group-badge');
+    if (groupBadge) groupBadge.textContent = 'GROUP: --';
   },
 
   renderViewState(state) {

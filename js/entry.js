@@ -28,6 +28,7 @@ const EntryApp = {
 
   /**
    * 受付API呼び出し
+   * @param {Object} qrData
    */
   async handleRegister(qrData) {
     if (!qrData || !qrData.device_id) {
@@ -66,9 +67,9 @@ const EntryApp = {
     if (!box) return;
     box.classList.remove('hidden');
 
-    if (gidElem) gidElem.textContent = data.groupId;
-    if (nameElem) nameElem.textContent = `${data.groupName} (${data.staffName}班)`;
-    if (diffBadge) diffBadge.textContent = String(data.difficulty).toUpperCase();
+    if (gidElem) gidElem.textContent = data.groupId || '--';
+    if (nameElem) nameElem.textContent = `${data.groupName || ''} (${data.staffName || ''}班)`;
+    if (diffBadge) diffBadge.textContent = String(data.difficulty || 'NORMAL').toUpperCase();
   },
 
   /**
@@ -106,7 +107,7 @@ const EntryApp = {
 
       const isInUse = bInfo.status === 'in_use';
 
-      // カード色制御
+      // カード色・発光クラス制御
       card.className = `simple-booth-card ${isInUse ? 'state-in-use' : 'state-idle'}`;
 
       if (groupPill) {

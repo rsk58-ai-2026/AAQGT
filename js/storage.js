@@ -1,7 +1,10 @@
 /**
- * storage.js - localStorageによる状態永続化・復旧マネージャー
+ * PROJECT AI 〜人類最後のアップデートが始まる〜
+ * js/storage.js - localStorageによる状態永続化・復旧マネージャー
  */
 const AppStorage = {
+  STAFF_ACTIVE_GROUP_KEY: 'PROJAI_STAFF_ACTIVE_GROUP',
+
   /**
    * 端末の役割（role）を保存
    * @param {string} role - CONFIG.ROLES のいずれか
@@ -77,6 +80,43 @@ const AppStorage = {
   },
 
   /**
+   * スタッフスマホの担当グループ情報を保存
+   * @param {Object} groupData
+   */
+  saveStaffActiveGroup(groupData) {
+    try {
+      localStorage.setItem(this.STAFF_ACTIVE_GROUP_KEY, JSON.stringify(groupData));
+    } catch (e) {
+      console.warn('Failed to save staff active group to localStorage:', e);
+    }
+  },
+
+  /**
+   * スタッフスマホの担当グループ情報を取得
+   * @returns {Object|null}
+   */
+  getStaffActiveGroup() {
+    try {
+      const data = localStorage.getItem(this.STAFF_ACTIVE_GROUP_KEY);
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      console.warn('Failed to load staff active group from localStorage:', e);
+      return null;
+    }
+  },
+
+  /**
+   * スタッフスマホの担当グループ情報をクリア
+   */
+  clearStaffActiveGroup() {
+    try {
+      localStorage.removeItem(this.STAFF_ACTIVE_GROUP_KEY);
+    } catch (e) {
+      console.warn('Failed to clear staff active group from localStorage:', e);
+    }
+  },
+
+  /**
    * 問題データをローカルキャッシュに保存（オフライン耐性・高速化）
    * @param {Array} questions
    */
@@ -110,6 +150,7 @@ const AppStorage = {
       localStorage.removeItem(CONFIG.STORAGE_KEYS.ROLE);
       localStorage.removeItem(CONFIG.STORAGE_KEYS.CURRENT_STATE);
       localStorage.removeItem(CONFIG.STORAGE_KEYS.CACHED_QUESTIONS);
+      localStorage.removeItem(this.STAFF_ACTIVE_GROUP_KEY);
     } catch (e) {
       console.warn('Failed to clear all storage:', e);
     }

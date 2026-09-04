@@ -57,6 +57,8 @@ const ShootingApp = {
 
   /**
    * 射撃得点保存API呼び出し
+   * @param {Object} qrData
+   * @param {number} score
    */
   async handleSubmitScore(qrData, score) {
     if (!qrData || !qrData.device_id) {
