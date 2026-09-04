@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * js/staff.js - 付き添いスタッフスマホ専用UI制御 (QR描画最適化・チートシート完全対応)
+ * js/staff.js - 付き添いスタッフスマホ専用UI制御 (3段階超堅牢QR描画・チートシート完全対応)
  */
 
 const StaffApp = {
@@ -37,9 +37,6 @@ const StaffApp = {
     this.loadQuestionsMaster();
   },
 
-  /**
-   * 端末IDの管理 (DEV-XX形式)
-   */
   initDeviceId() {
     this.deviceId = AppStorage.getStaffDeviceId();
 
@@ -50,11 +47,6 @@ const StaffApp = {
     if (inputDevId) inputDevId.value = this.deviceId;
   },
 
-  /**
-   * 難易度チップ選択
-   * @param {string} diff
-   * @param {HTMLElement} btnElem
-   */
   selectDiff(diff, btnElem) {
     this.selectedDifficulty = diff;
     const chips = document.querySelectorAll('.staff-diff-selector .btn-diff-chip');
@@ -62,10 +54,6 @@ const StaffApp = {
     if (btnElem) btnElem.classList.add('active');
   },
 
-  /**
-   * 設定フォーム送信 -> QRコード発行
-   * @param {Event} [event]
-   */
   generateAndStart(event) {
     if (event) event.preventDefault();
 
@@ -80,7 +68,6 @@ const StaffApp = {
       return;
     }
 
-    // ストレージに保存
     AppStorage.saveStaffActiveGroup({
       deviceId: this.deviceId,
       staffName: this.currentStaffName,
@@ -94,17 +81,15 @@ const StaffApp = {
 
   /**
    * 進行・QR提示画面の描画
-   * ※DOMの可視化とサイズ確定を待ってからQRコードを安全に生成
+   * 親コンテナのDOM表示確定を待ってからQRコードを安全に生成
    */
   renderActiveView() {
     const setupView = document.getElementById('staff-view-setup');
     const activeView = document.getElementById('staff-view-active');
 
-    // 1. 画面の切り替え（hidden解除）
     if (setupView) setupView.classList.add('hidden');
     if (activeView) activeView.classList.remove('hidden');
 
-    // 2. テキスト情報の反映
     const devBadge = document.getElementById('staff-active-dev-badge');
     const diffBadge = document.getElementById('staff-active-diff-badge');
     const groupNameElem = document.getElementById('staff-active-group-name');
@@ -115,24 +100,28 @@ const StaffApp = {
     if (groupNameElem) groupNameElem.textContent = this.currentGroupName;
     if (staffNameElem) staffNameElem.textContent = `担当: ${this.currentStaffName}`;
 
-    // 3. ブラウザの描画パイプライン（Layout & Paint）が完了した後にQR生成
+    // ブラウザのレイアウト計算完了後にQR生成を実行（ゼロ幅描画バグの根絶）
     requestAnimationFrame(() => {
       setTimeout(() => {
         this.generateQRCode();
-      }, 50);
+      }, 60);
     });
   },
 
   /**
-   * QRCode.js による確実な描画
+   * 3段階フォールバック付きQRコード生成
    */
   generateQRCode() {
     const container = document.getElementById('staff-qrcode-container');
     if (!container) return;
 
-    // 既存内容のクリア
-    container.innerHTML = '';
-    this.qrCodeInstance = null;
+    // ローディング表示
+    container.innerHTML = `
+      <div class="qr-loading-placeholder">
+        <span class="material-symbols-outlined" style="font-size:32px; animation:spin 1s infinite linear;">sync</span>
+        <span>QR生成中...</span>
+      </div>
+    `;
 
     const payload = {
       device_id: this.deviceId,
@@ -145,37 +134,114 @@ const StaffApp = {
 
     const qrText = JSON.stringify(payload);
 
-    try {
-      this.qrCodeInstance = new QRCode(container, {
-        text: qrText,
-        width: 220,
-        height: 220,
-        colorDark: '#050813',
-        colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel.M
-      });
-    } catch (error) {
-      console.error('[StaffApp] QR生成エラー:', error);
-      // フォールバック: 再試行
-      setTimeout(() => {
-        if (container) {
-          container.innerHTML = '';
-          new QRCode(container, {
-            text: qrText,
-            width: 220,
-            height: 220,
-            colorDark: '#050813',
-            colorLight: '#ffffff',
-            correctLevel: QRCode.CorrectLevel.M
-          });
-        }
-      }, 200);
+    // ==========================================
+    // 第1段階: ローカル QRCode.js ライブラリ
+    // ==========================================
+    if (typeof QRCode === 'function') {
+      try {
+        container.innerHTML = '';
+        this.qrCodeInstance = new QRCode(container, {
+          text: qrText,
+          width: 220,
+          height: 220,
+          colorDark: '#050813',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M
+        });
+
+        // 生成されたか検証（canvas または img が存在するか）
+        setTimeout(() => {
+          const hasGraphic = container.querySelector('canvas') || container.querySelector('img');
+          if (!hasGraphic) {
+            console.warn('[StaffApp] QRCode.jsのDOM出力未検出。第2段階へフォールバックします。');
+            this.generateQRCodeFallbackAPI(container, qrText, payload);
+          }
+        }, 120);
+        return;
+      } catch (err) {
+        console.warn('[StaffApp] 第1段階(QRCode.js)失敗:', err);
+      }
     }
+
+    // ==========================================
+    // 第2段階: QR生成 Web API (api.qrserver.com)
+    // ==========================================
+    this.generateQRCodeFallbackAPI(container, qrText, payload);
   },
 
   /**
-   * 設定入力画面へ戻す
+   * 第2段階: Web API経由での画像生成フォールバック
    */
+  generateQRCodeFallbackAPI(container, qrText, payload) {
+    container.innerHTML = `
+      <div class="qr-loading-placeholder">
+        <span class="material-symbols-outlined" style="font-size:32px; animation:spin 1s infinite linear;">sync</span>
+        <span>予備回線でQR生成中...</span>
+      </div>
+    `;
+
+    const encodedData = encodeURIComponent(qrText);
+    const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodedData}&margin=2`;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.alt = 'スタッフ認証QRコード';
+    img.style.width = '220px';
+    img.style.height = '220px';
+    img.style.display = 'block';
+
+    img.onload = () => {
+      container.innerHTML = '';
+      container.appendChild(img);
+    };
+
+    img.onerror = () => {
+      console.warn('[StaffApp] 第2段階(QR Web API)失敗。第3段階(完全オフライン代替)へ移行します。');
+      // サブAPI (QuickChart) を一度だけ試行
+      const backupUrl = `https://quickchart.io/qr?size=220&text=${encodedData}`;
+      const backupImg = new Image();
+      backupImg.style.width = '220px';
+      backupImg.style.height = '220px';
+      backupImg.style.display = 'block';
+
+      backupImg.onload = () => {
+        container.innerHTML = '';
+        container.appendChild(backupImg);
+      };
+
+      backupImg.onerror = () => {
+        // ==========================================
+        // 第3段階: 完全オフライン・代替テキスト表示
+        // ==========================================
+        this.renderEmergencyFallbackText(container, payload);
+      };
+
+      backupImg.src = backupUrl;
+    };
+
+    img.src = apiUrl;
+  },
+
+  /**
+   * 第3段階: 完全オフライン時、進行を止めないための緊急テキスト画面
+   */
+  renderEmergencyFallbackText(container, payload) {
+    container.innerHTML = `
+      <div class="qr-fallback-emergency">
+        <div class="qr-fallback-title">OFFLINE AUTH CODE</div>
+        <div class="qr-fallback-dev">${payload.device_id}</div>
+        <div class="qr-fallback-group">${payload.group_name}</div>
+        <div class="qr-fallback-diff">${String(payload.difficulty).toUpperCase()}</div>
+        <p style="font-size:10px; color:#94a3b8; margin-top:6px; line-height:1.2;">
+          ※QR通信環境がありません<br>各ブーススタッフにお伝えください
+        </p>
+        <button type="button" class="qr-fallback-retry-btn" onclick="StaffApp.generateQRCode()">
+          再試行
+        </button>
+      </div>
+    `;
+  },
+
   renderSetupView() {
     const setupView = document.getElementById('staff-view-setup');
     const activeView = document.getElementById('staff-view-active');
@@ -186,9 +252,6 @@ const StaffApp = {
     if (groupInput) groupInput.value = '';
   },
 
-  /**
-   * 「グループ案内終了」押下時
-   */
   finishAndReset() {
     if (confirm('現在のグループ案内を終了し、次のグループ登録画面に戻りますか？')) {
       AppStorage.clearStaffActiveGroup();
@@ -196,9 +259,6 @@ const StaffApp = {
     }
   },
 
-  /**
-   * チートシート問題データの取得 & 描画
-   */
   async loadQuestionsMaster() {
     try {
       const cached = AppStorage.getCachedQuestions();
@@ -253,9 +313,6 @@ const StaffApp = {
     renderList('3', r3Container);
   },
 
-  /**
-   * チートシート開閉トグル
-   */
   toggleCheatsVisibility() {
     this.isCheatsVisible = !this.isCheatsVisible;
     const body = document.getElementById('cheat-sheet-body');
