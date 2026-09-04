@@ -11,8 +11,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700;900&family=Noto+Sans+JP:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
   
-  <!-- 外部ライブラリ: QRコード生成 -->
+  <!-- 外部ライブラリ: QRコード生成 (CDN二重化フォールバック) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    if (typeof QRCode === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>');
+    }
+  </script>
+
   <!-- 外部ライブラリ: カメラQRコード読取 -->
   <script src="https://unpkg.com/html5-qrcode"></script>
   
@@ -336,7 +342,7 @@
   </div>
 
   <!-- ====================================================================== -->
-  <!-- 3. 管理者機 画面 (#manager-screen) [復活]                              -->
+  <!-- 3. 管理者機 画面 (#manager-screen)                                     -->
   <!-- ====================================================================== -->
   <div id="manager-screen" class="screen-container hidden">
     <header class="app-header">
@@ -762,7 +768,7 @@
       </div>
       <div class="header-right-actions">
         <button type="button" class="btn btn-manual btn-sm" onclick="ManualModal.open()">
-          <span class="material-symbols-outlined icon-sm">help</span>
+          <span class="material-symbols-outlined icon-sm">help</span> マニュアル
         </button>
         <button type="button" class="btn btn-outline-danger btn-sm" onclick="AppEngine.resetRole()">
           <span class="material-symbols-outlined icon-sm">settings</span>
