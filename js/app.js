@@ -1,14 +1,14 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * js/app.js - メインコントローラー / 役割振り分け / 共通UI・モーダル制御
+ * js/app.js - メインコントローラー / 役割振り分け / 共通モーダル制御
  */
 
 const AppEngine = {
   init() {
     const savedRole = AppStorage.getRole();
 
+    // 役割が未設定の場合は役割選択画面を必ず表示
     if (!savedRole) {
-      // 役割が未設定の場合は役割選択画面を必ず表示
       const roleScreen = document.getElementById('role-select-screen');
       if (roleScreen) {
         roleScreen.classList.remove('hidden');
@@ -17,7 +17,7 @@ const AppEngine = {
   },
 
   /**
-   * 端末の役割を選択して保存し、画面をリロード
+   * 端末の役割を選択して保存しリロード
    * @param {string} role
    */
   selectRole(role) {
@@ -26,7 +26,7 @@ const AppEngine = {
   },
 
   /**
-   * 端末の役割をリセットして初期選択画面へ戻す
+   * 端末の役割をリセットして選択画面へ戻す
    */
   resetRole() {
     if (confirm('端末の役割設定を変更しますか？\n（役割選択画面へ戻ります）')) {
@@ -119,17 +119,24 @@ const ManualModal = {
     }
 
     try {
+      const cached = AppStorage.getCachedQuestions();
+      if (cached && cached.length > 0) {
+        this.cachedQuestions = cached;
+        this.renderQuestionsList();
+      }
+
       const res = await API.getQuestions();
       if (res && res.success && Array.isArray(res.questions)) {
         this.cachedQuestions = res.questions;
+        AppStorage.cacheQuestions(res.questions);
         this.renderQuestionsList();
       } else {
-        if (listContainer) {
+        if (listContainer && this.cachedQuestions.length === 0) {
           listContainer.innerHTML = '<div class="text-center text-muted py-4 font-cyber">問題データがありません</div>';
         }
       }
     } catch (e) {
-      if (listContainer) {
+      if (listContainer && this.cachedQuestions.length === 0) {
         listContainer.innerHTML = '<div class="text-center text-danger py-4 font-cyber">問題データの取得に失敗しました</div>';
       }
     }

@@ -3,8 +3,6 @@
  * js/storage.js - localStorageによる状態永続化・復旧マネージャー
  */
 const AppStorage = {
-  STAFF_ACTIVE_GROUP_KEY: 'PROJAI_STAFF_ACTIVE_GROUP',
-
   /**
    * 端末の役割（role）を保存
    * @param {string} role - CONFIG.ROLES のいずれか
@@ -13,7 +11,7 @@ const AppStorage = {
     try {
       localStorage.setItem(CONFIG.STORAGE_KEYS.ROLE, role);
     } catch (e) {
-      console.warn('LocalStorage is not available:', e);
+      console.warn('[AppStorage] LocalStorage is not available:', e);
     }
   },
 
@@ -25,32 +23,98 @@ const AppStorage = {
     try {
       return localStorage.getItem(CONFIG.STORAGE_KEYS.ROLE);
     } catch (e) {
-      console.warn('LocalStorage is not available:', e);
+      console.warn('[AppStorage] LocalStorage is not available:', e);
       return null;
     }
   },
 
   /**
-   * 端末の役割をリセット（役割選択画面に戻す場合など）
+   * 端末の役割をリセット
    */
   clearRole() {
     try {
       localStorage.removeItem(CONFIG.STORAGE_KEYS.ROLE);
     } catch (e) {
-      console.warn('LocalStorage is not available:', e);
+      console.warn('[AppStorage] LocalStorage is not available:', e);
+    }
+  },
+
+  /**
+   * スタッフ端末固有ID (DEV-XX) の取得
+   * @returns {string}
+   */
+  getStaffDeviceId() {
+    try {
+      let devId = localStorage.getItem(CONFIG.STORAGE_KEYS.STAFF_DEVICE_ID);
+      if (!devId) {
+        const randNum = Math.floor(10 + Math.random() * 90);
+        devId = `DEV-${randNum}`;
+        this.setStaffDeviceId(devId);
+      }
+      return devId;
+    } catch (e) {
+      return 'DEV-01';
+    }
+  },
+
+  /**
+   * スタッフ端末固有IDの保存
+   * @param {string} devId
+   */
+  setStaffDeviceId(devId) {
+    try {
+      localStorage.setItem(CONFIG.STORAGE_KEYS.STAFF_DEVICE_ID, String(devId).trim());
+    } catch (e) {
+      console.warn('[AppStorage] Failed to save staff device id:', e);
+    }
+  },
+
+  /**
+   * スタッフスマホの担当グループ情報を保存
+   * @param {Object} groupData
+   */
+  saveStaffActiveGroup(groupData) {
+    try {
+      localStorage.setItem(CONFIG.STORAGE_KEYS.STAFF_ACTIVE_GROUP, JSON.stringify(groupData));
+    } catch (e) {
+      console.warn('[AppStorage] Failed to save staff active group:', e);
+    }
+  },
+
+  /**
+   * スタッフスマホの担当グループ情報を取得
+   * @returns {Object|null}
+   */
+  getStaffActiveGroup() {
+    try {
+      const data = localStorage.getItem(CONFIG.STORAGE_KEYS.STAFF_ACTIVE_GROUP);
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      console.warn('[AppStorage] Failed to load staff active group:', e);
+      return null;
+    }
+  },
+
+  /**
+   * スタッフスマホの担当グループ情報をクリア
+   */
+  clearStaffActiveGroup() {
+    try {
+      localStorage.removeItem(CONFIG.STORAGE_KEYS.STAFF_ACTIVE_GROUP);
+    } catch (e) {
+      console.warn('[AppStorage] Failed to clear staff active group:', e);
     }
   },
 
   /**
    * 現在の画面状態・進行コンテキストを保存
-   * （プレイ中の問題ID、選択難易度、残り時間などのクラッシュ保護用）
    * @param {Object} stateObj
    */
   saveCurrentState(stateObj) {
     try {
       localStorage.setItem(CONFIG.STORAGE_KEYS.CURRENT_STATE, JSON.stringify(stateObj));
     } catch (e) {
-      console.warn('Failed to save state to localStorage:', e);
+      console.warn('[AppStorage] Failed to save current state:', e);
     }
   },
 
@@ -63,68 +127,31 @@ const AppStorage = {
       const data = localStorage.getItem(CONFIG.STORAGE_KEYS.CURRENT_STATE);
       return data ? JSON.parse(data) : null;
     } catch (e) {
-      console.warn('Failed to load state from localStorage:', e);
+      console.warn('[AppStorage] Failed to load current state:', e);
       return null;
     }
   },
 
   /**
-   * 保存された進行状態をクリア（問題終了時や進行時に呼ぶ）
+   * 保存された進行状態をクリア
    */
   clearCurrentState() {
     try {
       localStorage.removeItem(CONFIG.STORAGE_KEYS.CURRENT_STATE);
     } catch (e) {
-      console.warn('Failed to clear state:', e);
+      console.warn('[AppStorage] Failed to clear current state:', e);
     }
   },
 
   /**
-   * スタッフスマホの担当グループ情報を保存
-   * @param {Object} groupData
-   */
-  saveStaffActiveGroup(groupData) {
-    try {
-      localStorage.setItem(this.STAFF_ACTIVE_GROUP_KEY, JSON.stringify(groupData));
-    } catch (e) {
-      console.warn('Failed to save staff active group to localStorage:', e);
-    }
-  },
-
-  /**
-   * スタッフスマホの担当グループ情報を取得
-   * @returns {Object|null}
-   */
-  getStaffActiveGroup() {
-    try {
-      const data = localStorage.getItem(this.STAFF_ACTIVE_GROUP_KEY);
-      return data ? JSON.parse(data) : null;
-    } catch (e) {
-      console.warn('Failed to load staff active group from localStorage:', e);
-      return null;
-    }
-  },
-
-  /**
-   * スタッフスマホの担当グループ情報をクリア
-   */
-  clearStaffActiveGroup() {
-    try {
-      localStorage.removeItem(this.STAFF_ACTIVE_GROUP_KEY);
-    } catch (e) {
-      console.warn('Failed to clear staff active group from localStorage:', e);
-    }
-  },
-
-  /**
-   * 問題データをローカルキャッシュに保存（オフライン耐性・高速化）
+   * 問題データをローカルキャッシュに保存
    * @param {Array} questions
    */
   cacheQuestions(questions) {
     try {
       localStorage.setItem(CONFIG.STORAGE_KEYS.CACHED_QUESTIONS, JSON.stringify(questions));
     } catch (e) {
-      console.warn('Failed to cache questions:', e);
+      console.warn('[AppStorage] Failed to cache questions:', e);
     }
   },
 
@@ -137,7 +164,7 @@ const AppStorage = {
       const data = localStorage.getItem(CONFIG.STORAGE_KEYS.CACHED_QUESTIONS);
       return data ? JSON.parse(data) : null;
     } catch (e) {
-      console.warn('Failed to load cached questions:', e);
+      console.warn('[AppStorage] Failed to load cached questions:', e);
       return null;
     }
   },
@@ -148,11 +175,12 @@ const AppStorage = {
   clearAll() {
     try {
       localStorage.removeItem(CONFIG.STORAGE_KEYS.ROLE);
+      localStorage.removeItem(CONFIG.STORAGE_KEYS.STAFF_DEVICE_ID);
+      localStorage.removeItem(CONFIG.STORAGE_KEYS.STAFF_ACTIVE_GROUP);
       localStorage.removeItem(CONFIG.STORAGE_KEYS.CURRENT_STATE);
       localStorage.removeItem(CONFIG.STORAGE_KEYS.CACHED_QUESTIONS);
-      localStorage.removeItem(this.STAFF_ACTIVE_GROUP_KEY);
     } catch (e) {
-      console.warn('Failed to clear all storage:', e);
+      console.warn('[AppStorage] Failed to clear all storage:', e);
     }
   }
 };

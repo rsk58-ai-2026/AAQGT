@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * js/shooting.js - 射撃フェーズ機制御 (テンキー入力 & QR得点登録)
+ * js/shooting.js - 射撃フェーズ機制御 (テンキー得点入力 & QR得点登録)
  */
 
 const ShootingApp = {
@@ -8,7 +8,7 @@ const ShootingApp = {
 
   init() {
     const role = AppStorage.getRole();
-    if (role !== 'shooting') return;
+    if (role !== CONFIG.ROLES.SHOOTING) return;
 
     const screen = document.getElementById('shooting-screen');
     if (screen) screen.classList.remove('hidden');

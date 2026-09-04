@@ -1,11 +1,11 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * js/api.js - 通信レイヤー (リトライ・指数バックオフ・新バックエンドAPI完全対応)
+ * js/api.js - 通信レイヤー (リトライ・指数バックオフ・全面リニューアル対応)
  */
 const API = {
   /**
    * 指数バックオフ付き高信頼性フェッチ
-   * 通信瞬断・GASタイムアウト・競合時に最大3回自動リトライ
+   * 通信瞬断・GASタイムアウト・排他ロック競合時に最大3回自動リトライ
    */
   async fetchWithRetry(url, options = {}, maxRetries = 3) {
     let attempt = 0;
@@ -112,7 +112,7 @@ const API = {
   },
 
   /**
-   * 解答判定・スコア送信
+   * 解答判定送信
    * @param {Object} payload { booth_id, device_id, group_id, question_id, is_correct, time_left, miss_count }
    */
   async submitQuizAnswer(payload) {
@@ -153,6 +153,28 @@ const API = {
   },
 
   /**
+   * 最終結果直接保存（バックアップ用）
+   * @param {Object} payload { groupId, totalScore, totalMisses, exQualified }
+   */
+  async submitFinalResult(payload) {
+    return await this.post({
+      action: 'submitFinalResult',
+      ...payload
+    });
+  },
+
+  /**
+   * 終了済み全グループの成績一覧取得
+   * @param {string} sortType 'latest' (新着順) | 'score' (ハイスコア順)
+   */
+  async getFinishedResultsList(sortType = 'latest') {
+    return await this.get({
+      action: 'getFinishedResultsList',
+      sort: sortType
+    });
+  },
+
+  /**
    * 総合ランキング一覧取得
    */
   async getRanking() {
@@ -178,17 +200,46 @@ const API = {
   },
 
   /**
-   * 全体システム状態取得
+   * 現在のシステムルール・全体状態取得
+   */
+  async getSystemRules() {
+    return await this.get({
+      action: 'getSystemRules'
+    });
+  },
+
+  /**
+   * getStatus (getSystemRules へのエイリアス)
    */
   async getStatus() {
-    return await this.get({
-      action: 'getStatus'
-    });
+    return await this.getSystemRules();
   },
 
   // ==========================================
   // 6. 管理者／システム制御 API
   // ==========================================
+
+  /**
+   * システムルールの一括保存
+   * @param {Object} rules { globalTimeLimit, penaltyRule, penaltyDeductSeconds, exConditionType, exConditionValue }
+   */
+  async saveSystemRules(rules) {
+    return await this.post({
+      action: 'saveSystemRules',
+      ...rules
+    });
+  },
+
+  /**
+   * 全体制限時間の更新
+   * @param {number} timeLimit
+   */
+  async setGlobalTimeLimit(timeLimit) {
+    return await this.post({
+      action: 'setGlobalTimeLimit',
+      timeLimit: timeLimit
+    });
+  },
 
   /**
    * 緊急一時停止の切り替え
@@ -220,17 +271,6 @@ const API = {
     return await this.post({
       action: 'setPaceSignal',
       paceSignal: paceSignal
-    });
-  },
-
-  /**
-   * 全体制限時間の更新
-   * @param {number} timeLimit
-   */
-  async setGlobalTimeLimit(timeLimit) {
-    return await this.post({
-      action: 'setGlobalTimeLimit',
-      timeLimit: timeLimit
     });
   },
 

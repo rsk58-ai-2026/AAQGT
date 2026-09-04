@@ -5,13 +5,13 @@
 
 const CameraScanner = {
   html5QrCode: null,
-  currentFacingMode: 'user', // デフォルトは前面インカメラ
+  currentFacingMode: 'user', // デフォルト前面インカメラ
   activeCallback: null,
   isScanning: false,
 
   /**
    * インカメラQRスキャナーを起動
-   * @param {Function} onScanSuccess - QR読み取り成功時のコールバック (dataObj or string)
+   * @param {Function} onScanSuccess - 読み取り成功時コールバック (parsedObj | rawString)
    */
   async start(onScanSuccess) {
     this.activeCallback = onScanSuccess;
@@ -67,7 +67,6 @@ const CameraScanner = {
     try {
       parsedData = JSON.parse(decodedText);
     } catch (e) {
-      // JSONでなければ生文字列として処理
       parsedData = { raw: decodedText };
     }
 

@@ -1,9 +1,17 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * manager.js - 管理者機 (バックヤード統括)
+ * js/manager.js - 管理者機 (バックヤード統括・ルール一括管理・リアルタイム監視)
  */
+
 const ManagerApp = {
   pollingTimer: null,
+  currentRules: {
+    globalTimeLimit: 60,
+    penaltyRule: 'instant_out',
+    penaltyDeductSeconds: 15,
+    exConditionType: 'hard_perfect',
+    exConditionValue: '100'
+  },
   isEmergencyPaused: false,
   isInfoPaused: false,
   currentPaceSignal: 'none',
@@ -12,177 +20,290 @@ const ManagerApp = {
     const role = AppStorage.getRole();
     if (role !== CONFIG.ROLES.MANAGER) return;
 
-    document.getElementById('manager-screen').classList.remove('hidden');
+    const screen = document.getElementById('manager-screen');
+    if (screen) screen.classList.remove('hidden');
+
     this.startPolling();
   },
 
   startPolling() {
-    this.fetchStatus();
+    this.fetchData();
     if (this.pollingTimer) clearInterval(this.pollingTimer);
     this.pollingTimer = setInterval(() => {
-      this.fetchStatus();
+      this.fetchData();
     }, CONFIG.POLLING_INTERVAL_MS);
   },
 
-  async fetchStatus() {
+  async fetchData() {
     const syncDot = document.getElementById('manager-sync-dot');
     const syncText = document.getElementById('manager-sync-text');
 
     try {
-      syncDot.className = 'sync-dot syncing';
-      const res = await API.getStatus();
+      if (syncDot) syncDot.className = 'sync-dot syncing';
+
+      // 1. システムルール & 制御状態の取得
+      const rulesRes = await API.getSystemRules();
+      if (rulesRes && rulesRes.success) {
+        this.currentRules = {
+          globalTimeLimit: rulesRes.globalTimeLimit || 60,
+          penaltyRule: rulesRes.penaltyRule || 'instant_out',
+          penaltyDeductSeconds: rulesRes.penaltyDeductSeconds || 15,
+          exConditionType: rulesRes.exConditionType || 'hard_perfect',
+          exConditionValue: rulesRes.exConditionValue || '100'
+        };
+
+        this.isEmergencyPaused = rulesRes.systemPaused === true;
+        this.isInfoPaused = rulesRes.infoPaused === true;
+        this.currentPaceSignal = rulesRes.paceSignal || 'none';
+
+        this.renderRulesUI();
+        this.renderControlUI(rulesRes);
+      }
+
+      // 2. ブース稼働状況の取得
+      const boothRes = await API.getBoothStatus();
+      if (boothRes && boothRes.success && boothRes.statuses) {
+        this.renderBooths(boothRes.statuses);
+      }
+
+      if (syncDot) syncDot.className = 'sync-dot';
+      if (syncText) syncText.textContent = new Date().toLocaleTimeString();
+    } catch (error) {
+      console.warn('[ManagerApp] 同期エラー:', error);
+      if (syncDot) syncDot.className = 'sync-dot error';
+    }
+  },
+
+  /**
+   * ルール設定フォームへの値反映
+   */
+  renderRulesUI() {
+    // 制限時間
+    const timeInput = document.getElementById('manager-time-limit-input');
+    if (timeInput && document.activeElement !== timeInput) {
+      timeInput.value = this.currentRules.globalTimeLimit;
+    }
+
+    // 誤答ペナルティルール
+    const penaltySelect = document.getElementById('manager-penalty-rule-select');
+    if (penaltySelect && document.activeElement !== penaltySelect) {
+      penaltySelect.value = this.currentRules.penaltyRule;
+    }
+
+    const deductGroup = document.getElementById('manager-deduct-seconds-group');
+    if (deductGroup) {
+      deductGroup.classList.toggle('hidden', this.currentRules.penaltyRule !== 'time_deduct');
+    }
+
+    const deductInput = document.getElementById('manager-deduct-seconds-input');
+    if (deductInput && document.activeElement !== deductInput) {
+      deductInput.value = this.currentRules.penaltyDeductSeconds;
+    }
+
+    // EX開放条件
+    const exTypeSelect = document.getElementById('manager-ex-type-select');
+    if (exTypeSelect && document.activeElement !== exTypeSelect) {
+      exTypeSelect.value = this.currentRules.exConditionType;
+    }
+
+    const exValGroup = document.getElementById('manager-ex-val-group');
+    if (exValGroup) {
+      exValGroup.classList.toggle('hidden', this.currentRules.exConditionType === 'hard_perfect');
+    }
+
+    const exValInput = document.getElementById('manager-ex-val-input');
+    if (exValInput && document.activeElement !== exValInput) {
+      exValInput.value = this.currentRules.exConditionValue;
+    }
+  },
+
+  /**
+   * 一時停止・シグナル等のUI制御
+   */
+  renderControlUI(res) {
+    // 緊急一時停止
+    const pauseBtn = document.getElementById('btn-emergency-pause');
+    const pauseBanner = document.getElementById('manager-paused-banner');
+    if (pauseBtn) {
+      if (this.isEmergencyPaused) {
+        pauseBtn.className = 'btn btn-success btn-sm font-cyber';
+        pauseBtn.innerHTML = '<span class="material-symbols-outlined icon-sm">play_circle</span> 緊急停止を解除（再開）';
+      } else {
+        pauseBtn.className = 'btn btn-danger btn-sm font-cyber';
+        pauseBtn.innerHTML = '<span class="material-symbols-outlined icon-sm">pause_circle</span> 緊急一時停止';
+      }
+    }
+    if (pauseBanner) pauseBanner.classList.toggle('hidden', !this.isEmergencyPaused);
+
+    // 待機画面
+    const infoBtn = document.getElementById('btn-info-pause');
+    const infoBanner = document.getElementById('manager-infopause-banner');
+    if (infoBtn) {
+      if (this.isInfoPaused) {
+        infoBtn.className = 'btn btn-success btn-sm font-cyber';
+        infoBtn.innerHTML = '<span class="material-symbols-outlined icon-sm">play_circle</span> 待機中表示を解除';
+      } else {
+        infoBtn.className = 'btn btn-warning btn-sm font-cyber';
+        infoBtn.innerHTML = '<span class="material-symbols-outlined icon-sm">hourglass_top</span> 「しばらくお待ちください」送信';
+      }
+    }
+    if (infoBanner) infoBanner.classList.toggle('hidden', !this.isInfoPaused);
+
+    // 出口混雑警告
+    const exitAlert = document.getElementById('manager-exit-congested-box');
+    if (exitAlert) {
+      exitAlert.classList.toggle('hidden', !res.isExitCongested);
+    }
+  },
+
+  /**
+   * ルール変更の保存
+   */
+  async saveRules() {
+    const timeInput = document.getElementById('manager-time-limit-input');
+    const penaltySelect = document.getElementById('manager-penalty-rule-select');
+    const deductInput = document.getElementById('manager-deduct-seconds-input');
+    const exTypeSelect = document.getElementById('manager-ex-type-select');
+    const exValInput = document.getElementById('manager-ex-val-input');
+
+    const globalTimeLimit = parseInt(timeInput ? timeInput.value : 60, 10) || 60;
+    const penaltyRule = penaltySelect ? penaltySelect.value : 'instant_out';
+    const penaltyDeductSeconds = parseInt(deductInput ? deductInput.value : 15, 10) || 15;
+    const exConditionType = exTypeSelect ? exTypeSelect.value : 'hard_perfect';
+    const exConditionValue = exValInput ? exValInput.value.trim() : '100';
+
+    if (globalTimeLimit < 10) {
+      alert('制限時間は10秒以上を設定してください');
+      return;
+    }
+
+    try {
+      const res = await API.saveSystemRules({
+        globalTimeLimit,
+        penaltyRule,
+        penaltyDeductSeconds,
+        exConditionType,
+        exConditionValue
+      });
 
       if (res && res.success) {
-        syncDot.className = 'sync-dot';
-        syncText.textContent = new Date().toLocaleTimeString();
-
-        // 1. 緊急一時停止状態
-        this.isEmergencyPaused = res.systemPaused;
-        this.updateEmergencyPauseUI(res.systemPaused);
-
-        // 2. 待機・機材調整中（非緊急）停止状態
-        this.isInfoPaused = res.infoPaused;
-        this.updateInfoPauseUI(res.infoPaused);
-
-        // 3. ペース指示シグナル状態
-        this.currentPaceSignal = res.paceSignal || 'none';
-        this.updatePaceSignalUI(this.currentPaceSignal);
-
-        // 4. 出口混雑アラート表示
-        const exitAlertBox = document.getElementById('manager-exit-congested-box');
-        if (exitAlertBox) {
-          if (res.isExitCongested) {
-            exitAlertBox.classList.remove('hidden');
-          } else {
-            exitAlertBox.classList.add('hidden');
-          }
-        }
-
-        // 5. 制限時間インプット（編集中でなければ反映）
-        const timeInput = document.getElementById('manager-time-limit-input');
-        if (document.activeElement !== timeInput && res.globalTimeLimit) {
-          timeInput.value = res.globalTimeLimit;
-        }
-
-        // 6. 各ブース詳細状況の描画
-        this.renderBooths(res.statuses);
+        alert('システムルール設定を更新しました。\n全端末の次回進行から自動適用されます。');
+        await this.fetchData();
+      } else {
+        alert('設定保存エラー: ' + (res.error || '不明なエラー'));
       }
-    } catch (error) {
-      syncDot.className = 'sync-dot error';
+    } catch (e) {
+      alert('設定保存通信エラーが発生しました');
     }
   },
 
-  updateEmergencyPauseUI(isPaused) {
-    const pauseBtn = document.getElementById('btn-emergency-pause');
-    const banner = document.getElementById('manager-paused-banner');
-
-    if (!pauseBtn) return;
-    if (isPaused) {
-      pauseBtn.className = 'btn btn-success btn-sm';
-      pauseBtn.innerHTML = '<span class="material-symbols-outlined icon-sm">play_circle</span> 緊急停止を解除（再開）';
-      if (banner) banner.classList.remove('hidden');
-    } else {
-      pauseBtn.className = 'btn btn-danger btn-sm';
-      pauseBtn.innerHTML = '<span class="material-symbols-outlined icon-sm">pause_circle</span> 緊急一時停止';
-      if (banner) banner.classList.add('hidden');
+  /**
+   * 誤答ペナルティ選択切替時の入力欄表示制御
+   */
+  handlePenaltyRuleChange(val) {
+    const deductGroup = document.getElementById('manager-deduct-seconds-group');
+    if (deductGroup) {
+      deductGroup.classList.toggle('hidden', val !== 'time_deduct');
     }
   },
 
-  updateInfoPauseUI(isPaused) {
-    const infoBtn = document.getElementById('btn-info-pause');
-    const banner = document.getElementById('manager-infopause-banner');
+  /**
+   * EX開放条件選択切替時の入力欄表示制御
+   */
+  handleExTypeChange(val) {
+    const exValGroup = document.getElementById('manager-ex-val-group');
+    const exValLabel = document.getElementById('manager-ex-val-label');
+    const exValInput = document.getElementById('manager-ex-val-input');
 
-    if (!infoBtn) return;
-    if (isPaused) {
-      infoBtn.className = 'btn btn-success btn-sm';
-      infoBtn.innerHTML = '<span class="material-symbols-outlined icon-sm">play_circle</span> 待機中表示を解除';
-      if (banner) banner.classList.remove('hidden');
-    } else {
-      infoBtn.className = 'btn btn-warning btn-sm';
-      infoBtn.innerHTML = '<span class="material-symbols-outlined icon-sm">hourglass_top</span> 「しばらくお待ちください」送信';
-      if (banner) banner.classList.add('hidden');
+    if (exValGroup) {
+      exValGroup.classList.toggle('hidden', val === 'hard_perfect');
+    }
+
+    if (val === 'score_threshold') {
+      if (exValLabel) exValLabel.textContent = 'EX獲得に必要な合計スコア閾値 (例: 100)';
+      if (exValInput) exValInput.placeholder = '100';
+    } else if (val === 'diff_count') {
+      if (exValLabel) exValLabel.textContent = '指定難易度と必要正解数 (例: hard:2 または 2)';
+      if (exValInput) exValInput.placeholder = 'hard:2';
     }
   },
 
-  updatePaceSignalUI(signal) {
-    const btnWait = document.getElementById('btn-pace-wait');
-    const btnPush = document.getElementById('btn-pace-push');
-    const btnNone = document.getElementById('btn-pace-none');
+  /**
+   * 全ブース稼働状況モニタの描画
+   */
+  renderBooths(statuses) {
+    const booths = [
+      { id: 'room1', name: '第1問 [NODE 1: ALPHA]' },
+      { id: 'room2', name: '第2問 [NODE 2: BETA]' },
+      { id: 'room3', name: '第3問 [NODE 3: CORE]' },
+      { id: 'shooting', name: '射撃 [SHOOTING RANGE]' }
+    ];
 
-    if (!btnWait || !btnPush || !btnNone) return;
+    booths.forEach(b => {
+      const bInfo = statuses[b.id] || { status: 'idle', currentGroupId: '' };
+      const card = document.getElementById(`manager-booth-${b.id}`);
+      const groupElem = document.getElementById(`manager-booth-group-${b.id}`);
+      const stateElem = document.getElementById(`manager-booth-state-${b.id}`);
 
-    btnWait.classList.toggle('active', signal === CONFIG.PACE_SIGNALS.WAIT);
-    btnPush.classList.toggle('active', signal === CONFIG.PACE_SIGNALS.PUSH);
-    btnNone.classList.toggle('active', signal === CONFIG.PACE_SIGNALS.NONE);
+      if (!card) return;
+
+      const isInUse = bInfo.status === 'in_use';
+
+      card.className = `simple-booth-card ${isInUse ? 'state-in-use' : 'state-idle'}`;
+
+      if (groupElem) {
+        groupElem.textContent = (isInUse && bInfo.currentGroupId) ? bInfo.currentGroupId : '空室';
+      }
+
+      if (stateElem) {
+        stateElem.textContent = isInUse ? '使用中 (IN USE)' : '空室 (IDLE)';
+      }
+    });
   },
 
+  /**
+   * 緊急一時停止のトグル
+   */
   async toggleEmergencyPause() {
     const nextState = !this.isEmergencyPaused;
-    const actionName = nextState ? '【緊急一時停止（赤）】を発動' : '緊急一時停止を【解除・再開】';
-
-    if (!confirm(`全ブースの ${actionName} しますか？`)) return;
+    const msg = nextState ? '【緊急一時停止】を発動しますか？' : '緊急一時停止を【解除・再開】しますか？';
+    if (!confirm(msg)) return;
 
     try {
       const res = await API.toggleEmergencyPause(nextState);
       if (res && res.success) {
         this.isEmergencyPaused = nextState;
-        this.updateEmergencyPauseUI(nextState);
+        this.renderControlUI({ isExitCongested: false });
       }
     } catch (e) {
       alert('通信エラーが発生しました');
     }
   },
 
+  /**
+   * 待機画面のトグル
+   */
   async toggleInfoPause() {
     const nextState = !this.isInfoPaused;
-    const actionName = nextState ? '【機材調整中/待機画面（黄）】を表示' : '待機画面表示を【解除・再開】';
-
-    if (!confirm(`全問題機に ${actionName} しますか？`)) return;
+    const msg = nextState ? '【機材調整中/待機画面】を表示しますか？' : '待機画面表示を【解除・再開】しますか？';
+    if (!confirm(msg)) return;
 
     try {
       const res = await API.toggleInfoPause(nextState);
       if (res && res.success) {
         this.isInfoPaused = nextState;
-        this.updateInfoPauseUI(nextState);
+        this.renderControlUI({ isExitCongested: false });
       }
     } catch (e) {
       alert('通信エラーが発生しました');
     }
   },
 
-  async setPaceSignal(signal) {
-    try {
-      const res = await API.setPaceSignal(signal);
-      if (res && res.success) {
-        this.currentPaceSignal = signal;
-        this.updatePaceSignalUI(signal);
-      }
-    } catch (e) {
-      alert('シグナル送信に失敗しました');
-    }
-  },
-
-  async saveTimeLimit() {
-    const input = document.getElementById('manager-time-limit-input');
-    const timeLimit = parseInt(input.value, 10);
-
-    if (!timeLimit || timeLimit < 10) {
-      alert('制限時間は10秒以上を指定してください');
-      return;
-    }
-
-    try {
-      const res = await API.setGlobalTimeLimit(timeLimit);
-      if (res && res.success) {
-        alert(`全体制限時間を [ ${timeLimit}秒 ] に更新しました。\n次回の進行・出題から全ブースへ適用されます。`);
-      }
-    } catch (e) {
-      alert('保存に失敗しました');
-    }
-  },
-
+  /**
+   * 全体リセット
+   */
   async resetAllSystem() {
-    const pass = prompt('🚨 システムを初期化しますか？\n全ブースのグループ割当とパイプラインが初期状態に戻ります。\n実行する場合は「RESET」と入力してください:');
+    const pass = prompt('🚨 システムを初期化しますか？\n全ブースの状態が初期状態に戻ります。\n実行する場合は「RESET」と入力してください:');
     if (pass !== 'RESET') {
       if (pass !== null) alert('キャンセルされました');
       return;
@@ -191,100 +312,12 @@ const ManagerApp = {
     try {
       const res = await API.resetAllStatus();
       if (res && res.success) {
-        alert('システムを完全に初期化しました');
-        await this.fetchStatus();
+        alert('システムを初期化しました');
+        await this.fetchData();
       }
     } catch (e) {
       alert('リセット処理に失敗しました');
     }
-  },
-
-  renderBooths(statuses) {
-    const container = document.getElementById('manager-booth-grid');
-    if (!container) return;
-    container.innerHTML = '';
-
-    const rooms = [
-      { key: 'room1', title: '第1問 ブース [Alpha]' },
-      { key: 'room2', title: '第2問 ブース [Beta]' },
-      { key: 'room3', title: '第3問 ブース [Core]' },
-      { key: 'exit',  title: '出口 / リザルト機' }
-    ];
-
-    rooms.forEach(r => {
-      const b = statuses[r.key] || {
-        status: 'unknown',
-        groupId: '',
-        difficulty: 'normal',
-        currentQuestionId: '',
-        currentQuestionText: '',
-        currentAnswer: '',
-        timeLeft: 0,
-        lastJudge: null,
-        lowBattery: false,
-        isCongested: false
-      };
-
-      const card = document.createElement('div');
-      card.className = `manager-detail-card ${b.status === 'playing' ? 'is-playing' : ''}`;
-
-      const statusBadgeClass = b.status === 'ready' ? 'badge-correct' : (b.status === 'playing' ? 'badge-warning' : 'badge-secondary');
-      const statusText = b.status === 'ready' ? '待機中' : (b.status === 'playing' ? '侵入攻略中' : '未接続');
-
-      card.innerHTML = `
-        <div class="manager-card-head">
-          <div>
-            <strong class="manager-booth-name">${r.title}</strong>
-            <span class="group-pill-sm">${b.groupId ? (b.isEx ? '[EX] ' : '') + b.groupId : '空室'}</span>
-          </div>
-          <div class="manager-head-badges">
-            ${b.lowBattery ? '<span class="battery-alert"><span class="material-symbols-outlined icon-xs">battery_alert</span>給電要請</span>' : ''}
-            ${b.isCongested ? '<span class="badge badge-danger">混雑中</span>' : ''}
-            <span class="result-judge-badge ${statusBadgeClass}">${statusText}</span>
-          </div>
-        </div>
-
-        <div class="manager-card-body">
-          <div class="manager-stat-row">
-            <span class="stat-label">難易度:</span>
-            <span class="stat-value font-bold">${b.difficulty.toUpperCase()}</span>
-          </div>
-
-          ${r.key !== 'exit' ? `
-            <div class="manager-stat-row">
-              <span class="stat-label">出題QID:</span>
-              <span class="stat-value font-mono">${b.currentQuestionId || '--'}</span>
-            </div>
-            <div class="manager-stat-row question-snippet">
-              <span class="stat-label">問題概要:</span>
-              <span class="stat-value snippet-text">${b.currentQuestionText || '（出題待機中）'}</span>
-            </div>
-            <div class="manager-stat-row">
-              <span class="stat-label">正解KEY:</span>
-              <span class="stat-value text-highlight font-bold">${b.currentAnswer || '--'}</span>
-            </div>
-            <div class="manager-stat-row">
-              <span class="stat-label">残り制限時間:</span>
-              <span class="stat-value timer-val font-mono">${b.timeLeft} 秒</span>
-            </div>
-          ` : `
-            <div class="manager-stat-row">
-              <span class="stat-label">稼働モード:</span>
-              <span class="stat-value">${b.status === 'playing' ? '成績発表中' : '案内待機中'}</span>
-            </div>
-          `}
-
-          <div class="manager-stat-row">
-            <span class="stat-label">直前判定:</span>
-            <span class="stat-value">
-              ${b.lastJudge === true ? '<span class="text-success font-bold">⭕ 正解 [突破]</span>' : (b.lastJudge === false ? '<span class="text-danger font-bold">❌ 不正解 [防衛]</span>' : '--')}
-            </span>
-          </div>
-        </div>
-      `;
-
-      container.appendChild(card);
-    });
   }
 };
 

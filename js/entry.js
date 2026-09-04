@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * js/entry.js - 入口機制御 (QR受付 & 全ブース稼働監視シンプルモニタ)
+ * js/entry.js - 入口機制御 (QR受付・全ブース稼働監視・現在作戦プロトコル情報バナー)
  */
 
 const EntryApp = {
@@ -8,13 +8,13 @@ const EntryApp = {
 
   init() {
     const role = AppStorage.getRole();
-    if (role !== 'entry') return;
+    if (role !== CONFIG.ROLES.ENTRY) return;
 
     const screen = document.getElementById('entry-screen');
     if (screen) screen.classList.remove('hidden');
 
-    // 5秒ごとのブース状態ポーリング監視を開始
     this.startMonitoring();
+    this.fetchCurrentRules();
   },
 
   /**
@@ -48,7 +48,6 @@ const EntryApp = {
       const res = await API.registerGroup(payload);
       if (res && res.success) {
         this.renderRecentRegistered(res);
-        // ブース監視を即時更新
         this.fetchBoothStatuses();
       } else {
         alert('受付登録に失敗しました: ' + (res.error || 'エラー'));
@@ -73,13 +72,60 @@ const EntryApp = {
   },
 
   /**
-   * 5秒ごとの定期ポーリング監視
+   * 現在の作戦プロトコル（制限時間・誤答ルール・EX条件）の取得と描画
+   */
+  async fetchCurrentRules() {
+    try {
+      const res = await API.getSystemRules();
+      if (res && res.success) {
+        this.renderRulesBanner(res);
+      }
+    } catch (e) {
+      console.warn('[EntryApp] ルールバナー取得エラー:', e);
+    }
+  },
+
+  renderRulesBanner(rules) {
+    const timeElem = document.getElementById('entry-rule-timelimit');
+    const penaltyElem = document.getElementById('entry-rule-penalty');
+    const exElem = document.getElementById('entry-rule-ex');
+
+    if (timeElem) {
+      timeElem.textContent = `${rules.globalTimeLimit || 60}秒`;
+    }
+
+    if (penaltyElem) {
+      if (rules.penaltyRule === 'time_deduct') {
+        penaltyElem.textContent = `時間減算 (-${rules.penaltyDeductSeconds || 15}秒)`;
+        penaltyElem.className = 'rule-val text-warning font-cyber';
+      } else {
+        penaltyElem.textContent = '誤答即アウト';
+        penaltyElem.className = 'rule-val text-danger font-cyber';
+      }
+    }
+
+    if (exElem) {
+      if (rules.exConditionType === 'score_threshold') {
+        exElem.textContent = `合計スコア ${rules.exConditionValue || 100}点以上`;
+      } else if (rules.exConditionType === 'diff_count') {
+        exElem.textContent = `指定難易度クリア (${rules.exConditionValue || '2問'})`;
+      } else {
+        exElem.textContent = '全問HARD選択 & 全問正解';
+      }
+    }
+  },
+
+  /**
+   * 5秒ごとの定期監視ポーリング
    */
   startMonitoring() {
     this.fetchBoothStatuses();
+    this.fetchCurrentRules();
+
     if (this.pollingTimer) clearInterval(this.pollingTimer);
     this.pollingTimer = setInterval(() => {
       this.fetchBoothStatuses();
+      this.fetchCurrentRules();
     }, 5000);
   },
 
@@ -107,11 +153,10 @@ const EntryApp = {
 
       const isInUse = bInfo.status === 'in_use';
 
-      // カード色・発光クラス制御
       card.className = `simple-booth-card ${isInUse ? 'state-in-use' : 'state-idle'}`;
 
       if (groupPill) {
-        groupPill.textContent = isInUse && bInfo.currentGroupId ? bInfo.currentGroupId : '空室';
+        groupPill.textContent = (isInUse && bInfo.currentGroupId) ? bInfo.currentGroupId : '空室';
       }
 
       if (stateInd) {

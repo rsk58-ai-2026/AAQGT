@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * js/staff.js - 付き添いスタッフスマホ専用UI制御
+ * js/staff.js - 付き添いスタッフスマホ専用UI制御 (QR描画最適化・チートシート完全対応)
  */
 
 const StaffApp = {
@@ -10,18 +10,19 @@ const StaffApp = {
   selectedDifficulty: 'normal',
   cachedQuestions: [],
   isCheatsVisible: false,
+  qrCodeInstance: null,
 
   init() {
     const role = AppStorage.getRole();
-    if (role !== 'staff') return;
+    if (role !== CONFIG.ROLES.STAFF) return;
 
     const screen = document.getElementById('staff-screen');
     if (screen) screen.classList.remove('hidden');
 
-    // 1. 端末IDの取得または新規発行・永続化
+    // 1. 端末固有ID (DEV-XX) の初期化
     this.initDeviceId();
 
-    // 2. 既存の進行中グループがあれば復元、なければ設定入力画面
+    // 2. 保存済みアクティブグループがあれば即座にQR画面へ、なければ初期設定入力へ
     const savedGroup = AppStorage.getStaffActiveGroup();
     if (savedGroup && savedGroup.deviceId === this.deviceId) {
       this.currentStaffName = savedGroup.staffName || 'スタッフ';
@@ -32,7 +33,7 @@ const StaffApp = {
       this.renderSetupView();
     }
 
-    // 3. チートシート用問題マスタのロード
+    // 3. チートシート用問題マスタのバックグラウンドロード
     this.loadQuestionsMaster();
   },
 
@@ -40,19 +41,13 @@ const StaffApp = {
    * 端末IDの管理 (DEV-XX形式)
    */
   initDeviceId() {
-    let devId = localStorage.getItem('PROJAI_STAFF_DEVICE_ID');
-    if (!devId) {
-      const randNum = Math.floor(10 + Math.random() * 90);
-      devId = `DEV-${randNum}`;
-      localStorage.setItem('PROJAI_STAFF_DEVICE_ID', devId);
-    }
-    this.deviceId = devId;
+    this.deviceId = AppStorage.getStaffDeviceId();
 
     const headerDevId = document.getElementById('staff-header-dev-id');
-    if (headerDevId) headerDevId.textContent = devId;
+    if (headerDevId) headerDevId.textContent = `DEV: ${this.deviceId}`;
 
     const inputDevId = document.getElementById('staff-input-dev-id');
-    if (inputDevId) inputDevId.value = devId;
+    if (inputDevId) inputDevId.value = this.deviceId;
   },
 
   /**
@@ -62,7 +57,8 @@ const StaffApp = {
    */
   selectDiff(diff, btnElem) {
     this.selectedDifficulty = diff;
-    document.querySelectorAll('.staff-diff-selector .btn-diff-chip').forEach(b => b.classList.remove('active'));
+    const chips = document.querySelectorAll('.staff-diff-selector .btn-diff-chip');
+    chips.forEach(b => b.classList.remove('active'));
     if (btnElem) btnElem.classList.add('active');
   },
 
@@ -77,14 +73,14 @@ const StaffApp = {
     const groupInput = document.getElementById('staff-input-group-name');
 
     this.currentStaffName = staffInput ? staffInput.value.trim() : 'スタッフ';
-    this.currentGroupName = groupInput ? groupInput.value.trim() : 'グループ';
+    this.currentGroupName = groupInput ? groupInput.value.trim() : '';
 
     if (!this.currentGroupName) {
       alert('グループ名を入力してください');
       return;
     }
 
-    // ローカルストレージに保存
+    // ストレージに保存
     AppStorage.saveStaffActiveGroup({
       deviceId: this.deviceId,
       staffName: this.currentStaffName,
@@ -98,13 +94,17 @@ const StaffApp = {
 
   /**
    * 進行・QR提示画面の描画
+   * ※DOMの可視化とサイズ確定を待ってからQRコードを安全に生成
    */
   renderActiveView() {
     const setupView = document.getElementById('staff-view-setup');
     const activeView = document.getElementById('staff-view-active');
+
+    // 1. 画面の切り替え（hidden解除）
     if (setupView) setupView.classList.add('hidden');
     if (activeView) activeView.classList.remove('hidden');
 
+    // 2. テキスト情報の反映
     const devBadge = document.getElementById('staff-active-dev-badge');
     const diffBadge = document.getElementById('staff-active-diff-badge');
     const groupNameElem = document.getElementById('staff-active-group-name');
@@ -113,19 +113,26 @@ const StaffApp = {
     if (devBadge) devBadge.textContent = this.deviceId;
     if (diffBadge) diffBadge.textContent = this.selectedDifficulty.toUpperCase();
     if (groupNameElem) groupNameElem.textContent = this.currentGroupName;
-    if (staffNameElem) staffNameElem.textContent = `担当スタッフ: ${this.currentStaffName}`;
+    if (staffNameElem) staffNameElem.textContent = `担当: ${this.currentStaffName}`;
 
-    // QRコード生成
-    this.generateQRCode();
+    // 3. ブラウザの描画パイプライン（Layout & Paint）が完了した後にQR生成
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        this.generateQRCode();
+      }, 50);
+    });
   },
 
   /**
-   * QRCode.js によるCanvas描画
+   * QRCode.js による確実な描画
    */
   generateQRCode() {
     const container = document.getElementById('staff-qrcode-container');
     if (!container) return;
+
+    // 既存内容のクリア
     container.innerHTML = '';
+    this.qrCodeInstance = null;
 
     const payload = {
       device_id: this.deviceId,
@@ -136,14 +143,34 @@ const StaffApp = {
       ts: Date.now()
     };
 
-    new QRCode(container, {
-      text: JSON.stringify(payload),
-      width: 220,
-      height: 220,
-      colorDark: '#050813',
-      colorLight: '#ffffff',
-      correctLevel: QRCode.CorrectLevel.M
-    });
+    const qrText = JSON.stringify(payload);
+
+    try {
+      this.qrCodeInstance = new QRCode(container, {
+        text: qrText,
+        width: 220,
+        height: 220,
+        colorDark: '#050813',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    } catch (error) {
+      console.error('[StaffApp] QR生成エラー:', error);
+      // フォールバック: 再試行
+      setTimeout(() => {
+        if (container) {
+          container.innerHTML = '';
+          new QRCode(container, {
+            text: qrText,
+            width: 220,
+            height: 220,
+            colorDark: '#050813',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.M
+          });
+        }
+      }, 200);
+    }
   },
 
   /**
@@ -174,9 +201,16 @@ const StaffApp = {
    */
   async loadQuestionsMaster() {
     try {
+      const cached = AppStorage.getCachedQuestions();
+      if (cached && cached.length > 0) {
+        this.cachedQuestions = cached;
+        this.renderCheatSheet();
+      }
+
       const res = await API.getQuestions();
       if (res && res.success && Array.isArray(res.questions)) {
         this.cachedQuestions = res.questions;
+        AppStorage.cacheQuestions(res.questions);
         this.renderCheatSheet();
       }
     } catch (e) {

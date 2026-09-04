@@ -1,6 +1,7 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
  * js/quiz.js - 問題機ブース端末 (第1問〜第3問) 制御
+ * （2択スタッフ判定・管理者ルール連動ペナルティ・MISSカウント撤廃）
  */
 
 const QuizApp = {
@@ -11,8 +12,14 @@ const QuizApp = {
   currentQuestion: null,
   hintsRevealedCount: 0,
   timeLeft: 60,
-  missCount: 0,
   timerInterval: null,
+  rules: {
+    globalTimeLimit: 60,
+    penaltyRule: 'instant_out',
+    penaltyDeductSeconds: 15,
+    exConditionType: 'hard_perfect',
+    exConditionValue: '100'
+  },
 
   init() {
     const role = AppStorage.getRole();
@@ -28,6 +35,44 @@ const QuizApp = {
     if (badge) badge.textContent = CONFIG.ROLE_NAMES[role] || `NODE ${this.roomNumber}`;
 
     this.resetToIdle();
+    this.fetchSystemRules();
+  },
+
+  /**
+   * 現在のシステムルールをサーバーから取得
+   */
+  async fetchSystemRules() {
+    try {
+      const res = await API.getSystemRules();
+      if (res && res.success) {
+        this.rules = {
+          globalTimeLimit: res.globalTimeLimit || 60,
+          penaltyRule: res.penaltyRule || 'instant_out',
+          penaltyDeductSeconds: res.penaltyDeductSeconds || 15,
+          exConditionType: res.exConditionType || 'hard_perfect',
+          exConditionValue: res.exConditionValue || '100'
+        };
+      }
+    } catch (e) {
+      console.warn('[QuizApp] ルール取得スキップ (デフォルト適用):', e);
+    }
+  },
+
+  /**
+   * 問題データの手動最新化
+   */
+  async refreshQuestionsMaster() {
+    try {
+      const res = await API.getQuestions();
+      if (res && res.success && Array.isArray(res.questions)) {
+        AppStorage.cacheQuestions(res.questions);
+        alert('最新の問題マスタを取得・更新しました');
+      } else {
+        alert('問題データの更新に失敗しました');
+      }
+    } catch (e) {
+      alert('通信エラーが発生しました');
+    }
   },
 
   /**
@@ -60,6 +105,18 @@ const QuizApp = {
       if (res && res.success && res.question) {
         this.activeGroupId = res.group ? res.group.groupId : 'G-??';
         this.currentQuestion = res.question;
+
+        // サーバーから返却された最新ルールを適用
+        if (res.rules) {
+          this.rules = {
+            globalTimeLimit: res.rules.globalTimeLimit || 60,
+            penaltyRule: res.rules.penaltyRule || 'instant_out',
+            penaltyDeductSeconds: res.rules.penaltyDeductSeconds || 15,
+            exConditionType: res.rules.exConditionType || 'hard_perfect',
+            exConditionValue: res.rules.exConditionValue || '100'
+          };
+        }
+
         const diff = (res.group && res.group.difficulty) ? res.group.difficulty : (qrData.difficulty || 'normal');
         this.startPlay(diff);
       } else {
@@ -70,11 +127,12 @@ const QuizApp = {
     }
   },
 
+  /**
+   * 攻略画面の初期化・開始
+   */
   startPlay(diff) {
     this.renderViewState('play');
     this.hintsRevealedCount = 0;
-    this.missCount = 0;
-    this.updateMissCounterUI();
 
     const groupBadge = document.getElementById('quiz-group-badge');
     const diffTag = document.getElementById('quiz-diff-tag');
@@ -95,8 +153,8 @@ const QuizApp = {
     const hintBtn = document.getElementById('btn-next-hint');
     if (hintBtn) hintBtn.disabled = false;
 
-    // タイマー開始 (60秒)
-    this.timeLeft = 60;
+    // 制限時間のセット & タイマースタート
+    this.timeLeft = this.rules.globalTimeLimit || 60;
     this.startTimer();
   },
 
@@ -153,25 +211,6 @@ const QuizApp = {
     }
   },
 
-  handleWrongAttempt() {
-    this.missCount++;
-    this.updateMissCounterUI();
-    this.triggerWrongEffect();
-  },
-
-  updateMissCounterUI() {
-    const elem = document.getElementById('quiz-miss-counter');
-    if (elem) elem.textContent = this.missCount;
-  },
-
-  triggerWrongEffect() {
-    const playView = document.getElementById('quiz-view-play');
-    if (playView) {
-      playView.classList.add('effect-wrong-shock');
-      setTimeout(() => playView.classList.remove('effect-wrong-shock'), 500);
-    }
-  },
-
   startTimer() {
     this.updateTimerUI();
     this.stopTimer();
@@ -197,8 +236,9 @@ const QuizApp = {
   updateTimerUI() {
     const timerElem = document.getElementById('quiz-timer');
     const timerBox = document.getElementById('quiz-timer-box');
-    const min = Math.floor(Math.max(0, this.timeLeft) / 60);
-    const sec = Math.max(0, this.timeLeft) % 60;
+    const safeTime = Math.max(0, this.timeLeft);
+    const min = Math.floor(safeTime / 60);
+    const sec = safeTime % 60;
     const formatted = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 
     if (timerElem) timerElem.textContent = formatted;
@@ -208,7 +248,60 @@ const QuizApp = {
   },
 
   /**
-   * スタッフ判定（正解 / 不正解）
+   * スタッフによる判定処理（⭕正解 / ❌誤答 の2択）
+   */
+  handleJudge(isCorrect) {
+    if (isCorrect) {
+      // ⭕ 正解 -> クリア処理
+      this.submitJudge(true);
+    } else {
+      // ❌ 誤答 -> 管理者ルールに従って分岐
+      if (this.rules.penaltyRule === 'instant_out') {
+        // ルール①: 誤答即アウト
+        this.submitJudge(false);
+      } else {
+        // ルール②: 時間減算ペナルティ
+        const deduct = this.rules.penaltyDeductSeconds || 15;
+        this.timeLeft = Math.max(0, this.timeLeft - deduct);
+        this.updateTimerUI();
+        this.triggerWrongEffect();
+
+        // 減算によって0秒以下になった場合は不正解終了
+        if (this.timeLeft <= 0) {
+          this.stopTimer();
+          this.submitJudge(false);
+        }
+      }
+    }
+  },
+
+  triggerWrongEffect() {
+    const playView = document.getElementById('quiz-view-play');
+    if (playView) {
+      playView.classList.add('effect-wrong-shock');
+      setTimeout(() => playView.classList.remove('effect-wrong-shock'), 500);
+    }
+    this.playWarningBeep();
+  },
+
+  playWarningBeep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    } catch (e) {}
+  },
+
+  /**
+   * 解答結果送信 & 演出
    * @param {boolean} isCorrect
    */
   async submitJudge(isCorrect) {
@@ -239,13 +332,13 @@ const QuizApp = {
         question_id: this.currentQuestion ? this.currentQuestion.id : '',
         is_correct: isCorrect,
         time_left: this.timeLeft,
-        miss_count: this.missCount
+        miss_count: 0
       });
     } catch (e) {
       console.warn('[QuizApp] 解答送信エラー (待機画面へ復帰):', e);
     }
 
-    // 即座に待機画面へリセット
+    // 待機画面へリセット
     this.resetToIdle();
   },
 
