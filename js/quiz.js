@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * quiz.js - 問題機ブース端末（自律分散ステートマシン / ハンドシェイク待機 & プレイ中中断防止実装）
+ * quiz.js - 問題機ブース端末（自律分散ステートマシン / 手動強制同期・ID整合性ガード・ハンドシェイク実装）
  */
 const QuizApp = {
   roomKey: null,
@@ -32,6 +32,7 @@ const QuizApp = {
   isLowBattery: false,
   isEmergencyPaused: false,
   isInfoPaused: false,
+  isManualSyncing: false,
   pollingTimer: null,
   pendingJudgeResult: null,
 
@@ -66,7 +67,7 @@ const QuizApp = {
     this.setupMediaFullscreenModal();
     this.setupRoomSpecificEvents();
 
-    // ③ バックグラウンドでGASから最新問題を取得・キャッシュ更新（Stale-While-Revalidate）
+    // ③ バックグラウンドでGASから最新問題を取得・キャッシュ更新
     this.preloadQuestions();
 
     // ④ 状態監視ポーリング開始
@@ -152,11 +153,48 @@ const QuizApp = {
     }
   },
 
+  /**
+   * 手動更新（強制同期リフレッシュ）
+   * 前の部屋からの進行シグナルが遅延している場合にスタッフが押して即時反映させる
+   */
+  async manualSync() {
+    if (this.isManualSyncing) return;
+    this.isManualSyncing = true;
+
+    const btn = document.getElementById('btn-manual-sync-quiz');
+    if (btn) {
+      btn.classList.add('is-syncing');
+      btn.innerHTML = '<span class="material-symbols-outlined icon-sm icon-spin">sync</span> 同期中...';
+    }
+
+    this.playAudioTone(1200, 0.08, 'sine');
+
+    try {
+      await this.checkStatus();
+      await this.preloadQuestions();
+      this.playAudioTone(1600, 0.12, 'triangle');
+    } catch (e) {
+      console.warn('手動同期エラー:', e);
+    } finally {
+      setTimeout(() => {
+        this.isManualSyncing = false;
+        if (btn) {
+          btn.classList.remove('is-syncing');
+          btn.innerHTML = '<span class="material-symbols-outlined icon-sm">sync</span> 手動更新';
+        }
+      }, 500);
+    }
+  },
+
   async preloadQuestions() {
     try {
       const res = await API.getQuestions(this.roomNumber);
       if (res && res.success && Array.isArray(res.questions) && res.questions.length > 0) {
-        this.cachedQuestions = res.questions;
+        this.cachedQuestions = res.questions.map(q => ({
+          ...q,
+          id: String(q.id || '').trim(),
+          difficulty: String(q.difficulty || '').trim().toLowerCase()
+        }));
         AppStorage.cacheQuestions(this.cachedQuestions);
       }
     } catch (e) {
@@ -237,17 +275,15 @@ const QuizApp = {
   },
 
   // ==========================================
-  // Room 1 固有ステートマシン (プレイ中割り込み完全防止)
+  // Room 1 固有ステートマシン
   // ==========================================
 
   syncStateRoom1(myData, allStatuses) {
-    // 【要件②】問題攻略中(playing)は外部のいかなる状態変化も破棄
     if (this.currentState === 'playing') return;
 
-    // 解答完了後、次室(Room 2)が自グループでplayingになったら移動完了とみなしidleへ復帰
     if (this.currentState === 'answered') {
       const room2 = allStatuses.room2 || {};
-      if (room2.status === 'playing' && room2.groupId === this.currentGroupId) {
+      if (room2.status === 'playing' && String(room2.groupId || '').trim() === String(this.currentGroupId || '').trim()) {
         this.stopBatonHandshake();
         this.currentGroupId = null;
         this.renderState('idle');
@@ -262,9 +298,6 @@ const QuizApp = {
     }
   },
 
-  /**
-   * Room 1: STARTボタン押下時
-   */
   async handleRoom1Start() {
     const btn = document.getElementById('btn-room1-start');
     if (!btn || btn.classList.contains('is-loading')) return;
@@ -282,7 +315,7 @@ const QuizApp = {
     try {
       const res = await API.startRoom1();
       if (res && res.success) {
-        this.currentGroupId = res.groupId;
+        this.currentGroupId = String(res.groupId || '').trim();
         this.updateGroupBadge(this.currentGroupId);
         this.isExUnlocked = false;
 
@@ -340,7 +373,8 @@ const QuizApp = {
 
   async selectDifficultyAndStart(diffSymbol, isAuto = false) {
     this.stopReadyTimer();
-    this.currentDifficulty = diffSymbol;
+    const cleanDiff = String(diffSymbol || 'easy').trim().toLowerCase();
+    this.currentDifficulty = cleanDiff;
 
     const confirmBtn = document.getElementById('btn-confirm-diff');
     if (confirmBtn) {
@@ -350,25 +384,28 @@ const QuizApp = {
       this.playStartupChime();
     }
 
-    let candidates = this.cachedQuestions.filter(q => q.difficulty === diffSymbol);
-    if (diffSymbol === 'ex' && candidates.length === 0) {
+    let candidates = this.cachedQuestions.filter(q => q.difficulty === cleanDiff);
+    if (cleanDiff === 'ex' && candidates.length === 0) {
       try {
         const exRes = await API.getQuestions('ex', 'ex');
-        candidates = exRes.questions;
+        if (exRes && exRes.success && Array.isArray(exRes.questions)) {
+          candidates = exRes.questions;
+        }
       } catch (e) {}
     }
 
     if (candidates.length === 0) {
-      alert(`該当する問題データが存在しません [${diffSymbol}]`);
+      alert(`該当する問題データが存在しません [${cleanDiff.toUpperCase()}]`);
       this.resetConfirmDiffButton();
       this.renderState('idle');
       return;
     }
 
     this.currentQuestion = candidates[Math.floor(Math.random() * candidates.length)];
+    const chosenQid = String(this.currentQuestion.id || '').trim();
 
     try {
-      await API.confirmRoom1Difficulty(diffSymbol, this.currentQuestion.id);
+      await API.confirmRoom1Difficulty(cleanDiff, chosenQid);
       this.startPlay();
     } catch (e) {
       alert('難易度確定の通信に失敗しました。');
@@ -387,19 +424,18 @@ const QuizApp = {
   },
 
   // ==========================================
-  // Room 2 固有ステートマシン (プレイ中割り込み完全防止)
+  // Room 2 固有ステートマシン
   // ==========================================
 
   syncStateRoom2(myData, allStatuses) {
-    // 【要件②】問題攻略中(playing)は外部からの割り込み（ready等）を100%遮断
     if (this.currentState === 'playing') return;
 
-    const serverStatus = myData.status;
+    const serverStatus = String(myData.status || '').trim().toLowerCase();
 
-    // 【要件②】Room 2が新グループ(ready)を受領できるのは自身がidleのときのみ
+    // 待機中(idle)の時のみ新グループを受領
     if (serverStatus === 'ready' && this.currentState === 'idle') {
-      this.currentGroupId = myData.groupId;
-      this.currentDifficulty = myData.difficulty || 'normal';
+      this.currentGroupId = String(myData.groupId || '').trim();
+      this.currentDifficulty = String(myData.difficulty || 'normal').trim().toLowerCase();
       this.updateGroupBadge(this.currentGroupId);
 
       this.renderState('ready');
@@ -407,10 +443,9 @@ const QuizApp = {
       return;
     }
 
-    // 解答完了後、次室(Room 3)が自グループでplayingになったらidleへリセット
     if (this.currentState === 'answered') {
       const room3 = allStatuses.room3 || {};
-      if (room3.status === 'playing' && room3.groupId === this.currentGroupId) {
+      if (String(room3.status || '').trim().toLowerCase() === 'playing' && String(room3.groupId || '').trim() === String(this.currentGroupId || '').trim()) {
         this.stopBatonHandshake();
         this.currentGroupId = null;
         this.renderState('idle');
@@ -426,21 +461,19 @@ const QuizApp = {
   },
 
   // ==========================================
-  // Room 3 固有ステートマシン (プレイ中割り込み完全防止)
+  // Room 3 固有ステートマシン
   // ==========================================
 
   syncStateRoom3(myData, allStatuses) {
-    // 【要件②】問題攻略中(playing)は外部からの割り込みを100%遮断
     if (this.currentState === 'playing') return;
 
-    const serverStatus = myData.status;
+    const serverStatus = String(myData.status || '').trim().toLowerCase();
 
-    // 【要件②】Room 3が新グループ(ready)を受領できるのは自身がidleまたはansweredのときのみ
     if (serverStatus === 'ready') {
       if (this.currentState === 'idle' || this.currentState === 'answered') {
         this.stopRoom3AutoResetCountdown();
-        this.currentGroupId = myData.groupId;
-        this.currentDifficulty = myData.difficulty || 'normal';
+        this.currentGroupId = String(myData.groupId || '').trim();
+        this.currentDifficulty = String(myData.difficulty || 'normal').trim().toLowerCase();
         this.updateGroupBadge(this.currentGroupId);
 
         this.renderState('ready');
@@ -460,17 +493,12 @@ const QuizApp = {
   // ハンドシェイク通信（解答提出後のバトン渡し）
   // ==========================================
 
-  /**
-   * 解答送信後、次室が受け取れるまでポーリング問い合わせを行う
-   */
   startBatonHandshake() {
     this.stopBatonHandshake();
     this.isBatonTransferred = false;
 
-    // 即時1回目の問い合わせ
     this.tryPassBaton();
 
-    // 2.5秒間隔で相手の空きをリトライ監視
     this.batonHandshakeTimer = setInterval(() => {
       if (this.isEmergencyPaused || this.isInfoPaused) return;
       this.tryPassBaton();
@@ -493,17 +521,14 @@ const QuizApp = {
     try {
       const res = await API.passBatonToNext(this.roomKey, this.currentGroupId, this.currentDifficulty);
       if (res && res.success && res.transferred) {
-        // 次室へのバトン受け渡しが成功！
         this.isBatonTransferred = true;
         this.stopBatonHandshake();
 
-        // 画面を「先にお進みください」へ切り替え
         const waitNotice = document.getElementById('quiz-view-answered-wait');
         const moveNotice = document.getElementById('quiz-view-answered-move');
         if (waitNotice) waitNotice.classList.add('hidden');
         if (moveNotice) moveNotice.classList.remove('hidden');
 
-        // 前進許可音
         this.playAudioTone(880, 0.25, 'sine');
       }
     } catch (e) {
@@ -616,7 +641,8 @@ const QuizApp = {
       readyBtn.innerHTML = '<span class="material-symbols-outlined icon-lg icon-spin">sync</span> 起動中...';
     }
 
-    let candidates = this.cachedQuestions.filter(q => q.difficulty === this.currentDifficulty);
+    const cleanDiff = String(this.currentDifficulty || 'normal').trim().toLowerCase();
+    let candidates = this.cachedQuestions.filter(q => q.difficulty === cleanDiff);
     if (candidates.length === 0) {
       candidates = this.cachedQuestions;
     }
@@ -628,9 +654,10 @@ const QuizApp = {
     }
 
     this.currentQuestion = candidates[Math.floor(Math.random() * candidates.length)];
+    const chosenQid = String(this.currentQuestion.id || '').trim();
 
     try {
-      await API.startRoomPlaying(this.roomKey, this.currentQuestion.id);
+      await API.startRoomPlaying(this.roomKey, chosenQid);
       this.startPlay(customTimeLimit);
     } catch (e) {
       alert('攻略開始の同期に失敗しました。');
@@ -665,17 +692,17 @@ const QuizApp = {
 
   renderQuestionData() {
     const diffTag = document.getElementById('current-diff-tag');
-    if (diffTag) diffTag.textContent = this.currentDifficulty.toUpperCase();
+    if (diffTag) diffTag.textContent = String(this.currentDifficulty || '').toUpperCase();
 
     const qIdElem = document.getElementById('quiz-q-id');
-    if (qIdElem) qIdElem.textContent = this.currentQuestion.id;
+    if (qIdElem) qIdElem.textContent = String(this.currentQuestion.id || '').trim();
 
     const qTextElem = document.getElementById('quiz-question-text');
-    if (qTextElem) qTextElem.textContent = this.currentQuestion.question_text;
+    if (qTextElem) qTextElem.textContent = this.currentQuestion.question_text || '';
 
     const mediaContainer = document.getElementById('quiz-media-container');
     mediaContainer.innerHTML = '';
-    const mediaUrl = this.currentQuestion.media_url;
+    const mediaUrl = String(this.currentQuestion.media_url || '').trim();
 
     if (mediaUrl) {
       mediaContainer.classList.remove('hidden');
@@ -806,11 +833,12 @@ const QuizApp = {
   },
 
   async autoSubmitOnTimeUp() {
+    const safeQid = this.currentQuestion ? String(this.currentQuestion.id || '').trim() : 'TIMEUP';
     const payload = {
-      groupId: this.currentGroupId,
+      groupId: String(this.currentGroupId || '').trim(),
       roomNumber: this.roomNumber,
-      difficulty: this.currentDifficulty,
-      questionId: this.currentQuestion ? this.currentQuestion.id : 'TIMEUP',
+      difficulty: String(this.currentDifficulty || 'normal').trim().toLowerCase(),
+      questionId: safeQid,
       isCorrect: false,
       timeLeft: 0,
       missCount: this.missCount
@@ -870,12 +898,13 @@ const QuizApp = {
     }
 
     const safeTimeLeft = Math.max(0, Math.floor(Number(this.timeLeft) || 0));
+    const safeQid = this.currentQuestion ? String(this.currentQuestion.id || '').trim() : '';
 
     const payload = {
-      groupId: this.currentGroupId,
+      groupId: String(this.currentGroupId || '').trim(),
       roomNumber: this.roomNumber,
-      difficulty: this.currentDifficulty,
-      questionId: this.currentQuestion ? this.currentQuestion.id : '',
+      difficulty: String(this.currentDifficulty || 'normal').trim().toLowerCase(),
+      questionId: safeQid,
       isCorrect: isCorrect,
       timeLeft: safeTimeLeft,
       missCount: this.missCount
@@ -949,9 +978,6 @@ const QuizApp = {
     }
   },
 
-  /**
-   * 解答送信後の画面描画（Room 1/Room 2 はまず待機画面を表示し、ハンドシェイクを開始）
-   */
   renderAnsweredViewDetails() {
     const waitNotice = document.getElementById('quiz-view-answered-wait');
     const moveNotice = document.getElementById('quiz-view-answered-move');
@@ -961,20 +987,17 @@ const QuizApp = {
     if (room3ManualBox) room3ManualBox.classList.add('hidden');
 
     if (this.roomKey === 'room3') {
-      // Room 3 は次が出口のため即座に進行案内を表示
       if (waitNotice) waitNotice.classList.add('hidden');
       if (moveNotice) moveNotice.classList.remove('hidden');
       if (room3ManualBox) room3ManualBox.classList.remove('hidden');
       this.startRoom3AutoResetCountdown();
     } else {
-      // Room 1 / Room 2 はまず【次ブース待機中】画面を表示し、安全にバトンを渡すハンドシェイクを開始
       if (waitTarget) {
         waitTarget.textContent = (this.roomKey === 'room1') ? 'NODE 2 [BETA]' : 'NODE 3 [CORE]';
       }
       if (waitNotice) waitNotice.classList.remove('hidden');
       if (moveNotice) moveNotice.classList.add('hidden');
 
-      // ハンドシェイクポーリング開始（相手が受け取ったら「先にお進みください」へ昇格）
       this.startBatonHandshake();
     }
   },
