@@ -1,7 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * js/quiz.js - 問題機ブース端末 (第1問〜第3問) 制御
- * （2択スタッフ判定・管理者ルール連動ペナルティ・MISSカウント撤廃）
+ * js/quiz.js - 問題機ブース端末 (第1問〜第3問) 制御 (完全一致出題版)
  */
 
 const QuizApp = {
@@ -38,9 +37,6 @@ const QuizApp = {
     this.fetchSystemRules();
   },
 
-  /**
-   * 現在のシステムルールをサーバーから取得
-   */
   async fetchSystemRules() {
     try {
       const res = await API.getSystemRules();
@@ -54,13 +50,10 @@ const QuizApp = {
         };
       }
     } catch (e) {
-      console.warn('[QuizApp] ルール取得スキップ (デフォルト適用):', e);
+      console.warn('[QuizApp] ルール取得スキップ:', e);
     }
   },
 
-  /**
-   * 問題データの手動最新化
-   */
   async refreshQuestionsMaster() {
     try {
       const res = await API.getQuestions();
@@ -75,19 +68,12 @@ const QuizApp = {
     }
   },
 
-  /**
-   * QRスキャナー起動
-   */
   openScanner() {
     CameraScanner.start(async (data) => {
       await this.handleStartQuiz(data);
     });
   },
 
-  /**
-   * 出題開始
-   * @param {Object} qrData
-   */
   async handleStartQuiz(qrData) {
     if (!qrData || !qrData.device_id) {
       alert('無効なスタッフQRコードです。');
@@ -99,14 +85,14 @@ const QuizApp = {
     try {
       const res = await API.startQuizRoom({
         booth_id: this.roomKey,
-        device_id: this.activeDeviceId
+        device_id: this.activeDeviceId,
+        difficulty: qrData.difficulty || 'normal'
       });
 
       if (res && res.success && res.question) {
         this.activeGroupId = res.group ? res.group.groupId : 'G-??';
         this.currentQuestion = res.question;
 
-        // サーバーから返却された最新ルールを適用
         if (res.rules) {
           this.rules = {
             globalTimeLimit: res.rules.globalTimeLimit || 60,
@@ -117,8 +103,8 @@ const QuizApp = {
           };
         }
 
-        const diff = (res.group && res.group.difficulty) ? res.group.difficulty : (qrData.difficulty || 'normal');
-        this.startPlay(diff);
+        // サーバーから返却された確定問題をそのまま開始
+        this.startPlay(res.question.difficulty || 'normal');
       } else {
         alert('出題開始エラー: ' + (res.error || 'グループが特定できません'));
       }
@@ -127,9 +113,6 @@ const QuizApp = {
     }
   },
 
-  /**
-   * 攻略画面の初期化・開始
-   */
   startPlay(diff) {
     this.renderViewState('play');
     this.hintsRevealedCount = 0;
@@ -140,20 +123,17 @@ const QuizApp = {
     const qTextElem = document.getElementById('quiz-question-text');
 
     if (groupBadge) groupBadge.textContent = `GROUP: ${this.activeGroupId}`;
-    if (diffTag) diffTag.textContent = diff.toUpperCase();
+    if (diffTag) diffTag.textContent = String(diff).toUpperCase();
     if (qIdElem) qIdElem.textContent = this.currentQuestion.id || `Q${this.roomNumber}-01`;
     if (qTextElem) qTextElem.textContent = this.currentQuestion.question_text || '';
 
-    // メディア描画
     this.renderMedia(this.currentQuestion.media_url);
 
-    // ヒント初期化
     const hintList = document.getElementById('quiz-hint-list');
     if (hintList) hintList.innerHTML = '<div class="hint-empty">開示された解析ヒントはありません</div>';
     const hintBtn = document.getElementById('btn-next-hint');
     if (hintBtn) hintBtn.disabled = false;
 
-    // 制限時間のセット & タイマースタート
     this.timeLeft = this.rules.globalTimeLimit || 60;
     this.startTimer();
   },
@@ -247,26 +227,18 @@ const QuizApp = {
     }
   },
 
-  /**
-   * スタッフによる判定処理（⭕正解 / ❌誤答 の2択）
-   */
   handleJudge(isCorrect) {
     if (isCorrect) {
-      // ⭕ 正解 -> クリア処理
       this.submitJudge(true);
     } else {
-      // ❌ 誤答 -> 管理者ルールに従って分岐
       if (this.rules.penaltyRule === 'instant_out') {
-        // ルール①: 誤答即アウト
         this.submitJudge(false);
       } else {
-        // ルール②: 時間減算ペナルティ
         const deduct = this.rules.penaltyDeductSeconds || 15;
         this.timeLeft = Math.max(0, this.timeLeft - deduct);
         this.updateTimerUI();
         this.triggerWrongEffect();
 
-        // 減算によって0秒以下になった場合は不正解終了
         if (this.timeLeft <= 0) {
           this.stopTimer();
           this.submitJudge(false);
@@ -300,14 +272,9 @@ const QuizApp = {
     } catch (e) {}
   },
 
-  /**
-   * 解答結果送信 & 演出
-   * @param {boolean} isCorrect
-   */
   async submitJudge(isCorrect) {
     this.stopTimer();
 
-    // 演出表示
     if (isCorrect) {
       const overlay = document.getElementById('effect-overlay-purged');
       if (overlay) {
@@ -335,10 +302,9 @@ const QuizApp = {
         miss_count: 0
       });
     } catch (e) {
-      console.warn('[QuizApp] 解答送信エラー (待機画面へ復帰):', e);
+      console.warn('[QuizApp] 解答送信エラー:', e);
     }
 
-    // 待機画面へリセット
     this.resetToIdle();
   },
 

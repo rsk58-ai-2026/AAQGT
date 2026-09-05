@@ -1513,8 +1513,12 @@ select.form-input {
   width: 100% !important;
   height: 100% !important;
   object-fit: cover !important;
+}
+/* インカメラ時のみ鏡像（ミラー反転）を適用 */
+.scanner-viewport.mirror-mode video {
   transform: scaleX(-1);
 }
+
 .scanner-laser-line {
   position: absolute;
   top: 0; left: 0; right: 0;

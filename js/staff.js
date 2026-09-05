@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * js/staff.js - 付き添いスタッフスマホ専用UI制御 (超高信頼性QR描画・チートシート完全対応)
+ * js/staff.js - 付き添いスタッフスマホ専用UI制御 (高速同期・完全一致表示版)
  */
 
 const StaffApp = {
@@ -8,8 +8,9 @@ const StaffApp = {
   currentStaffName: '',
   currentGroupName: '',
   selectedDifficulty: 'normal',
-  cachedQuestions: [],
+  assignedQuestions: [],
   isCheatsVisible: false,
+  pollingTimer: null,
 
   init() {
     const role = AppStorage.getRole();
@@ -18,10 +19,8 @@ const StaffApp = {
     const screen = document.getElementById('staff-screen');
     if (screen) screen.classList.remove('hidden');
 
-    // 1. 端末固有ID (DEV-XX) の初期化
     this.initDeviceId();
 
-    // 2. 保存済みアクティブグループがあれば即座にQR画面へ
     const savedGroup = AppStorage.getStaffActiveGroup();
     if (savedGroup && savedGroup.deviceId === this.deviceId && savedGroup.groupName) {
       this.currentStaffName = savedGroup.staffName || 'スタッフ';
@@ -31,9 +30,6 @@ const StaffApp = {
     } else {
       this.renderSetupView();
     }
-
-    // 3. チートシート用問題マスタのバックグラウンドロード
-    this.loadQuestionsMaster();
   },
 
   initDeviceId() {
@@ -76,6 +72,7 @@ const StaffApp = {
       isExEntry: this.selectedDifficulty === 'ex'
     });
 
+    this.assignedQuestions = [];
     this.renderActiveView();
   },
 
@@ -96,10 +93,95 @@ const StaffApp = {
     if (groupNameElem) groupNameElem.textContent = this.currentGroupName;
     if (staffNameElem) staffNameElem.textContent = `担当: ${this.currentStaffName}`;
 
-    // DOM表示後にQR生成を実行
     setTimeout(() => {
       this.generateQRCode();
     }, 50);
+
+    this.loadAssignedQuestions();
+    this.startAssignedPolling();
+  },
+
+  startAssignedPolling() {
+    if (this.pollingTimer) clearInterval(this.pollingTimer);
+    // 3問取得できるまで3秒間隔で高速ポーリング
+    this.pollingTimer = setInterval(() => {
+      if (this.assignedQuestions.length < 3) {
+        this.loadAssignedQuestions(true);
+      }
+    }, 3000);
+  },
+
+  async loadAssignedQuestions(silent = false) {
+    try {
+      const res = await API.getAssignedQuestions(this.deviceId);
+      if (res && res.success && res.hasActiveGroup && Array.isArray(res.questions) && res.questions.length > 0) {
+        this.assignedQuestions = res.questions;
+        this.renderAssignedCheats();
+      } else {
+        if (!silent) {
+          this.renderPendingCheats();
+        }
+      }
+    } catch (e) {
+      if (!silent) {
+        this.renderPendingCheats();
+      }
+    }
+  },
+
+  renderAssignedCheats() {
+    const r1Container = document.getElementById('cheat-list-room1');
+    const r2Container = document.getElementById('cheat-list-room2');
+    const r3Container = document.getElementById('cheat-list-room3');
+
+    if (!r1Container || !r2Container || !r3Container) return;
+
+    const renderCard = (q, roomNum) => {
+      if (!q) {
+        return `<div class="text-muted py-1" style="font-size:12px;">第${roomNum}問: 未確定</div>`;
+      }
+      const hintsHtml = (q.hints && q.hints.length > 0)
+        ? `<div class="cheat-exp" style="margin-top:4px;"><strong>ヒント:</strong> ${q.hints.join(' / ')}</div>`
+        : '';
+
+      return `
+        <div class="cheat-item" style="border-left: 3px solid var(--neon-cyan);">
+          <div class="cheat-item-head">
+            <span class="badge badge-secondary font-mono">${q.id || '--'}</span>
+            <span class="font-cyber font-bold text-highlight">[${String(q.difficulty || '').toUpperCase()}]</span>
+          </div>
+          <p class="cheat-qtext mt-1"><strong>問題:</strong> ${q.question_text || ''}</p>
+          <div class="cheat-ans-box mt-1" style="background: rgba(0,240,255,0.08); padding: 4px 8px; border-radius: 4px;">
+            <span class="cheat-label">正解:</span>
+            <strong class="text-success font-mono font-bold" style="font-size:16px;">${q.answer || '--'}</strong>
+          </div>
+          ${hintsHtml}
+          ${q.explanation ? `<div class="cheat-exp mt-1"><span class="cheat-label">解説:</span> ${q.explanation}</div>` : ''}
+        </div>
+      `;
+    };
+
+    const q1 = this.assignedQuestions.find(q => String(q.room) === '1') || this.assignedQuestions[0];
+    const q2 = this.assignedQuestions.find(q => String(q.room) === '2') || this.assignedQuestions[1];
+    const q3 = this.assignedQuestions.find(q => String(q.room) === '3') || this.assignedQuestions[2];
+
+    r1Container.innerHTML = renderCard(q1, 1);
+    r2Container.innerHTML = renderCard(q2, 2);
+    r3Container.innerHTML = renderCard(q3, 3);
+  },
+
+  renderPendingCheats() {
+    const msg = `
+      <div class="text-center py-2 text-warning font-cyber" style="font-size:12px;">
+        <span class="material-symbols-outlined icon-xs" style="vertical-align:middle;">info</span> 入口機でQR受付を行うと、出題される3問が確定します
+      </div>
+    `;
+    const r1 = document.getElementById('cheat-list-room1');
+    const r2 = document.getElementById('cheat-list-room2');
+    const r3 = document.getElementById('cheat-list-room3');
+    if (r1) r1.innerHTML = msg;
+    if (r2) r2.innerHTML = msg;
+    if (r3) r3.innerHTML = msg;
   },
 
   generateQRCode() {
@@ -124,7 +206,6 @@ const StaffApp = {
 
     const rawJson = JSON.stringify(payload);
 
-    // 第1段階: ローカル QRCode.js
     if (typeof QRCode === 'function') {
       try {
         container.innerHTML = '';
@@ -137,20 +218,10 @@ const StaffApp = {
           colorLight: '#ffffff',
           correctLevel: QRCode.CorrectLevel.M
         });
-
-        setTimeout(() => {
-          const hasGraphic = container.querySelector('canvas') || container.querySelector('img');
-          if (!hasGraphic) {
-            this.generateQRCodeFallbackAPI(container, rawJson, payload);
-          }
-        }, 150);
         return;
-      } catch (err) {
-        console.warn('[StaffApp] QRCode.js 生成失敗:', err);
-      }
+      } catch (err) {}
     }
 
-    // 第2段階: Web API
     this.generateQRCodeFallbackAPI(container, rawJson, payload);
   },
 
@@ -171,47 +242,21 @@ const StaffApp = {
     };
 
     img.onerror = () => {
-      // サブAPI (QuickChart)
-      const backupUrl = `https://quickchart.io/qr?size=220&text=${encodedData}`;
-      const backupImg = new Image();
-      backupImg.style.width = '220px';
-      backupImg.style.height = '220px';
-      backupImg.style.display = 'block';
-
-      backupImg.onload = () => {
-        container.innerHTML = '';
-        container.appendChild(backupImg);
-      };
-
-      backupImg.onerror = () => {
-        // 第3段階: 完全オフライン用テキスト画面
-        this.renderEmergencyFallbackText(container, payload);
-      };
-
-      backupImg.src = backupUrl;
+      container.innerHTML = `
+        <div class="qr-fallback-emergency">
+          <div class="qr-fallback-title">OFFLINE AUTH CODE</div>
+          <div class="qr-fallback-dev">${payload.device_id}</div>
+          <div class="qr-fallback-group">${payload.group_name}</div>
+          <div class="qr-fallback-diff">[${String(payload.difficulty).toUpperCase()}]</div>
+        </div>
+      `;
     };
 
     img.src = apiUrl;
   },
 
-  renderEmergencyFallbackText(container, payload) {
-    container.innerHTML = `
-      <div class="qr-fallback-emergency">
-        <div class="qr-fallback-title">OFFLINE AUTH CODE</div>
-        <div class="qr-fallback-dev">${payload.device_id}</div>
-        <div class="qr-fallback-group">${payload.group_name}</div>
-        <div class="qr-fallback-diff">[${String(payload.difficulty).toUpperCase()}]</div>
-        <p style="font-size:10px; color:#94a3b8; margin-top:6px; line-height:1.2;">
-          ※QR生成サーバーに接続できません<br>各ブースで手動登録してください
-        </p>
-        <button type="button" class="qr-fallback-retry-btn" onclick="StaffApp.generateQRCode()">
-          再試行
-        </button>
-      </div>
-    `;
-  },
-
   renderSetupView() {
+    if (this.pollingTimer) clearInterval(this.pollingTimer);
     const setupView = document.getElementById('staff-view-setup');
     const activeView = document.getElementById('staff-view-active');
     if (setupView) setupView.classList.remove('hidden');
@@ -223,61 +268,11 @@ const StaffApp = {
 
   finishAndReset() {
     if (confirm('現在のグループ案内を終了し、次のグループ登録画面に戻りますか？')) {
+      if (this.pollingTimer) clearInterval(this.pollingTimer);
       AppStorage.clearStaffActiveGroup();
+      this.assignedQuestions = [];
       this.renderSetupView();
     }
-  },
-
-  async loadQuestionsMaster() {
-    try {
-      const cached = AppStorage.getCachedQuestions();
-      if (cached && cached.length > 0) {
-        this.cachedQuestions = cached;
-        this.renderCheatSheet();
-      }
-
-      const res = await API.getQuestions();
-      if (res && res.success && Array.isArray(res.questions)) {
-        this.cachedQuestions = res.questions;
-        AppStorage.cacheQuestions(res.questions);
-        this.renderCheatSheet();
-      }
-    } catch (e) {}
-  },
-
-  renderCheatSheet() {
-    const r1Container = document.getElementById('cheat-list-room1');
-    const r2Container = document.getElementById('cheat-list-room2');
-    const r3Container = document.getElementById('cheat-list-room3');
-
-    if (!r1Container || !r2Container || !r3Container) return;
-
-    const renderList = (roomNum, targetElem) => {
-      const qs = this.cachedQuestions.filter(q => String(q.room) === String(roomNum));
-      if (qs.length === 0) {
-        targetElem.innerHTML = '<div class="text-muted py-1">問題データなし</div>';
-        return;
-      }
-
-      targetElem.innerHTML = qs.map(q => `
-        <div class="cheat-item">
-          <div class="cheat-item-head">
-            <span class="badge badge-secondary font-mono">${q.id || '--'}</span>
-            <span class="font-cyber font-bold text-highlight">[${String(q.difficulty || '').toUpperCase()}]</span>
-          </div>
-          <p class="cheat-qtext">${q.question_text || ''}</p>
-          <div class="cheat-ans-box">
-            <span class="cheat-label">正解:</span>
-            <strong class="text-success font-mono font-bold">${q.answer || '--'}</strong>
-          </div>
-          ${q.explanation ? `<div class="cheat-exp"><span class="cheat-label">解説:</span> ${q.explanation}</div>` : ''}
-        </div>
-      `).join('');
-    };
-
-    renderList('1', r1Container);
-    renderList('2', r2Container);
-    renderList('3', r3Container);
   },
 
   toggleCheatsVisibility() {
@@ -289,6 +284,11 @@ const StaffApp = {
     if (body) body.classList.toggle('hidden', !this.isCheatsVisible);
     if (label) label.textContent = this.isCheatsVisible ? '答えを隠す' : '答えを表示';
     if (btn) btn.classList.toggle('btn-warning', this.isCheatsVisible);
+
+    // チートシートを開いた瞬間に最新の割り当て問題を同期取得
+    if (this.isCheatsVisible) {
+      this.loadAssignedQuestions();
+    }
   }
 };
 

@@ -1,6 +1,6 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * qr-sync.js - 完全ローカル・QRコードバトンリレー & 暗号化 / テンキー入力マネージャー
+ * qr-sync.js - 完全ローカル・QRコードバトンリレー & 暗号化 / テンキー入力マネージャー (ミラー制御・スキャン最適化版)
  */
 
 const QRSync = {
@@ -15,15 +15,10 @@ const QRSync = {
   // 1. データパック / アンパック（シリアライザ）
   // ==========================================
 
-  /**
-   * バトンリレー用オブジェクトを安全なBase64文字列にパック
-   * @param {Object} dataObj
-   * @returns {string}
-   */
   packData(dataObj) {
     try {
       const payload = {
-        v: 1, // プロトコルバージョン
+        v: 1,
         gid: String(dataObj.groupId || '').trim(),
         diff: String(dataObj.difficulty || 'normal').trim().toLowerCase(),
         from: Number(dataObj.fromRoom || 1),
@@ -45,11 +40,6 @@ const QRSync = {
     }
   },
 
-  /**
-   * QRコードで読み取った文字列をオブジェクトに復号
-   * @param {string} rawString
-   * @returns {Object|null}
-   */
   unpackData(rawString) {
     try {
       if (!rawString || typeof rawString !== 'string') return null;
@@ -85,12 +75,6 @@ const QRSync = {
     }
   },
 
-  /**
-   * 4桁アクセスキーの生成（グループ番号・難易度・部屋番号・チェックサムから算出）
-   * また、端末間バックアップ用にローカルストレージにも保存
-   * @param {Object} dataObj
-   * @returns {string} 4桁の数字文字列 (例: "4812")
-   */
   generatePasscode(dataObj) {
     try {
       let gNum = 1;
@@ -101,32 +85,22 @@ const QRSync = {
       const dVal = diffMap[String(dataObj.difficulty).toLowerCase()] || 2;
       const rVal = Number(dataObj.fromRoom) || 1;
 
-      // チェックサム計算
       const rawCalc = (gNum * 37 + dVal * 13 + rVal * 7) % 9000 + 1000;
       const passcode = String(rawCalc).padStart(4, '0');
 
-      // ローカルストレージにキャッシュ保存
       this.savePasscodeToVault(passcode, dataObj);
-
       return passcode;
     } catch (e) {
       return '1234';
     }
   },
 
-  /**
-   * 4桁アクセスキーからのデータ復元
-   * @param {string} passcode
-   * @returns {Object|null}
-   */
   resolvePasscode(passcode) {
     if (!passcode || passcode.length !== 4) return null;
 
-    // 1. ローカルVaultから検索
     const vaultData = this.getPasscodeFromVault(passcode);
     if (vaultData) return vaultData;
 
-    // 2. Vaultにない場合はコードからグループ・難易度を逆算復元
     const codeNum = parseInt(passcode, 10);
     if (isNaN(codeNum)) return null;
 
@@ -170,12 +144,6 @@ const QRSync = {
   // 2. QRコード描画 (QRCode.js 利用)
   // ==========================================
 
-  /**
-   * 指定した要素内にQRコードを生成・描画
-   * @param {string} elementId
-   * @param {Object} dataObj
-   * @returns {string} 生成した4桁パスコード
-   */
   generateQRCode(elementId, dataObj) {
     const container = document.getElementById(elementId);
     if (!container) return '';
@@ -185,7 +153,6 @@ const QRSync = {
     const packedString = this.packData(dataObj);
     const passcode = this.generatePasscode(dataObj);
 
-    // iPadで最も高速かつ高精度に読み取れるハイコントラスト設定
     new QRCode(container, {
       text: packedString,
       width: 260,
@@ -202,31 +169,49 @@ const QRSync = {
   // 3. カメラQRスキャナー制御 (Html5Qrcode)
   // ==========================================
 
-  /**
-   * QRスキャンを開始
-   * @param {string} viewportId - 映像を描画する要素ID (例: 'qr-reader')
-   * @param {Function} onSuccess - スキャン成功時コールバック (decodedObj) => void
-   */
   async startScanner(viewportId, onSuccess) {
     this.activeScanCallback = onSuccess;
 
     const modal = document.getElementById('qr-scan-modal');
     if (modal) modal.classList.remove('hidden');
 
+    const viewportElem = document.getElementById(viewportId);
+    if (viewportElem) {
+      if (this.currentCameraFacing === 'user') {
+        viewportElem.classList.add('mirror-mode');
+      } else {
+        viewportElem.classList.remove('mirror-mode');
+      }
+    }
+
     try {
       if (this.html5QrCode) {
         await this.stopScanner();
       }
 
-      this.html5QrCode = new Html5Qrcode(viewportId);
+      this.html5QrCode = new Html5Qrcode(viewportId, {
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        },
+        verbose: false
+      });
 
       const qrConfig = {
-        fps: 15,
-        qrbox: { width: 240, height: 240 },
-        aspectRatio: 1.0
+        fps: 20,
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          const edge = Math.max(160, Math.floor(minEdge * 0.75));
+          return { width: edge, height: edge };
+        },
+        aspectRatio: 1.0,
+        disableFlip: false
       };
 
-      const cameraConfig = { facingMode: this.currentCameraFacing };
+      const cameraConfig = {
+        facingMode: this.currentCameraFacing,
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      };
 
       await this.html5QrCode.start(
         cameraConfig,
@@ -234,12 +219,24 @@ const QRSync = {
         (decodedText) => {
           this.handleScanSuccess(decodedText);
         },
-        (errorMessage) => {
-          // フレームごとの未検出は無視
-        }
+        () => {}
       );
     } catch (err) {
-      console.warn('[QRSync] カメラ起動失敗:', err);
+      console.warn('[QRSync] カメラ起動失敗 (通常起動へ再試行):', err);
+      try {
+        if (this.html5QrCode) {
+          await this.html5QrCode.start(
+            { facingMode: this.currentCameraFacing },
+            { fps: 15, aspectRatio: 1.0 },
+            (decodedText) => this.handleScanSuccess(decodedText),
+            () => {}
+          );
+          return;
+        }
+      } catch (fallbackErr) {
+        console.warn('[QRSync] フォールバック起動失敗:', fallbackErr);
+      }
+
       alert('カメラの起動に失敗しました。カメラへのアクセスを許可するか、「4桁コード手入力」をご利用ください。');
       this.closeScannerModal();
     }
@@ -252,9 +249,7 @@ const QRSync = {
       return;
     }
 
-    // 成功演出音
     this.playSuccessSound();
-
     await this.stopScanner();
     this.closeScannerModal();
 
@@ -286,10 +281,9 @@ const QRSync = {
 
   async toggleCamera() {
     this.currentCameraFacing = (this.currentCameraFacing === 'environment') ? 'user' : 'environment';
-    if (this.html5QrCode && this.html5QrCode.isScanning) {
-      await this.stopScanner();
-      await this.startScanner('qr-reader', this.activeScanCallback);
-    }
+    const cb = this.activeScanCallback;
+    await this.stopScanner();
+    await this.startScanner('qr-reader', cb);
   },
 
   // ==========================================
@@ -406,7 +400,7 @@ const QRSync = {
       const osc2 = ctx.createOscillator();
       const gain2 = ctx.createGain();
       osc2.type = 'sine';
-      osc2.frequency.setValueAtTime(2349.32, now + 0.09); // D7
+      osc2.frequency.setValueAtTime(2349.32, now + 0.09);
       gain2.gain.setValueAtTime(0.25, now + 0.09);
       gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
       osc2.connect(gain2);
