@@ -13,11 +13,6 @@
   
   <!-- 外部ライブラリ: QRコード生成 (CDN二重化フォールバック) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script>
-    if (typeof QRCode === 'undefined') {
-      document.write('<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>');
-    }
-  </script>
 
   <!-- 外部ライブラリ: カメラQRコード読取 -->
   <script src="https://unpkg.com/html5-qrcode"></script>
