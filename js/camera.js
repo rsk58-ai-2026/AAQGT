@@ -1,157 +1,115 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * js/camera.js - インカメラQRスキャナー共通制御マネージャー
+ * js/camera.js - QRカメラ完全廃止・画面テンキー入力マネージャー
  */
 
-const CameraScanner = {
-  html5QrCode: null,
-  currentFacingMode: 'user', // デフォルト前面インカメラ
+const KeypadAuth = {
+  currentInput: '',
   activeCallback: null,
-  isScanning: false,
 
   /**
-   * インカメラQRスキャナーを起動
-   * @param {Function} onScanSuccess - 読み取り成功時コールバック (parsedObj | rawString)
+   * テンキーモーダルを開く
+   * @param {Function} onConfirm - 入力確定時コールバック (data) => void
    */
-  async start(onScanSuccess) {
-    this.activeCallback = onScanSuccess;
-    const modal = document.getElementById('camera-scan-modal');
+  start(onConfirm) {
+    this.activeCallback = onConfirm;
+    this.currentInput = '';
+    this.updateDisplay();
+
+    const modal = document.getElementById('keypad-auth-modal');
     if (modal) modal.classList.remove('hidden');
+  },
 
-    try {
-      if (this.html5QrCode) {
-        await this.stop();
-      }
-
-      this.html5QrCode = new Html5Qrcode('camera-reader-viewport');
-
-      const config = {
-        fps: 15,
-        qrbox: { width: 240, height: 240 },
-        aspectRatio: 1.0
-      };
-
-      const cameraConfig = {
-        facingMode: this.currentFacingMode
-      };
-
-      this.isScanning = true;
-      await this.html5QrCode.start(
-        cameraConfig,
-        config,
-        (decodedText) => {
-          this.handleDecodedText(decodedText);
-        },
-        (errorMessage) => {
-          // 未検出フレームは無視
-        }
-      );
-    } catch (error) {
-      console.warn('[CameraScanner] カメラ起動エラー:', error);
-      alert('カメラの起動に失敗しました。カメラの利用権限を許可してください。');
-      this.close();
+  push(num) {
+    if (this.currentInput.length < 4) {
+      this.currentInput += String(num);
+      this.playKeyBeep();
+      this.updateDisplay();
     }
   },
 
-  /**
-   * 読み取り成功時のハンドリング
-   */
-  async handleDecodedText(decodedText) {
-    if (!this.isScanning) return;
-    this.isScanning = false;
+  clear() {
+    this.currentInput = '';
+    this.playKeyBeep();
+    this.updateDisplay();
+  },
 
-    // 認証成功ビープ音
-    this.playSuccessBeep();
+  backspace() {
+    if (this.currentInput.length > 0) {
+      this.currentInput = this.currentInput.slice(0, -1);
+      this.playKeyBeep();
+      this.updateDisplay();
+    }
+  },
 
-    let parsedData = null;
-    try {
-      parsedData = JSON.parse(decodedText);
-    } catch (e) {
-      parsedData = { raw: decodedText };
+  updateDisplay() {
+    const display = document.getElementById('keypad-auth-display');
+    if (!display) return;
+    display.textContent = this.currentInput ? this.currentInput : '--';
+  },
+
+  confirm() {
+    if (!this.currentInput) {
+      alert('スタッフの認証コード（数字）を入力してください');
+      return;
     }
 
-    await this.stop();
-    this.closeModalOnly();
+    const num = parseInt(this.currentInput, 10);
+    // DEV-XX 形式のIDを作成（例: "12" -> "DEV-12", "5" -> "DEV-05"）
+    const formattedNum = String(num).padStart(2, '0');
+    const deviceId = `DEV-${formattedNum}`;
+
+    this.playSuccessBeep();
+    this.close();
 
     if (typeof this.activeCallback === 'function') {
-      this.activeCallback(parsedData);
+      this.activeCallback({
+        device_id: deviceId,
+        code: formattedNum
+      });
     }
   },
 
-  /**
-   * 前面 / 背面カメラの切り替え
-   */
-  async toggleCameraFacing() {
-    this.currentFacingMode = (this.currentFacingMode === 'user') ? 'environment' : 'user';
-    if (this.html5QrCode && this.isScanning) {
-      const cb = this.activeCallback;
-      await this.stop();
-      await this.start(cb);
-    }
-  },
-
-  /**
-   * スキャナー停止処理
-   */
-  async stop() {
-    this.isScanning = false;
-    if (this.html5QrCode) {
-      try {
-        if (this.html5QrCode.isScanning) {
-          await this.html5QrCode.stop();
-        }
-        await this.html5QrCode.clear();
-      } catch (e) {
-        console.warn('[CameraScanner] 停止処理エラー:', e);
-      } finally {
-        this.html5QrCode = null;
-      }
-    }
-  },
-
-  /**
-   * モーダルを閉じてスキャナーを停止
-   */
-  async close() {
-    await this.stop();
-    this.closeModalOnly();
-  },
-
-  closeModalOnly() {
-    const modal = document.getElementById('camera-scan-modal');
+  close() {
+    this.currentInput = '';
+    const modal = document.getElementById('keypad-auth-modal');
     if (modal) modal.classList.add('hidden');
     this.activeCallback = null;
   },
 
-  /**
-   * Web Audio API によるサイバー電子音
-   */
+  playKeyBeep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1200, ctx.currentTime);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.05);
+    } catch (e) {}
+  },
+
   playSuccessBeep() {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const now = ctx.currentTime;
-
       const osc1 = ctx.createOscillator();
       const gain1 = ctx.createGain();
       osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(1760, now); // A6
+      osc1.frequency.setValueAtTime(1760, now);
       gain1.gain.setValueAtTime(0.2, now);
       gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
       osc1.connect(gain1);
       gain1.connect(ctx.destination);
       osc1.start(now);
       osc1.stop(now + 0.08);
-
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.type = 'sine';
-      osc2.frequency.setValueAtTime(2349.32, now + 0.09); // D7
-      gain2.gain.setValueAtTime(0.25, now + 0.09);
-      gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
-      osc2.connect(gain2);
-      gain2.connect(ctx.destination);
-      osc2.start(now + 0.09);
-      osc2.stop(now + 0.22);
     } catch (e) {}
   }
 };
+
+// 既存コードとの互換性エイリアス
+const CameraScanner = KeypadAuth;
