@@ -1,30 +1,32 @@
 /**
  * PROJECT AI 〜人類最後のアップデートが始まる〜
- * js/camera.js - インカメラQRスキャナー共通制御マネージャー (デッドロック解消・超堅牢パース版)
+ * js/camera.js - インカメラQRスキャナー共通制御マネージャー (安全フォールバック付き)
  */
 
 const CameraScanner = {
   html5QrCode: null,
-  currentFacingMode: 'user', // 'user' (インカメラ) / 'environment' (背面)
+  currentFacingMode: 'user',
   activeCallback: null,
   isScanning: false,
 
-  /**
-   * QRスキャナーを起動
-   * @param {Function} onScanSuccess
-   */
   async start(onScanSuccess) {
     this.activeCallback = onScanSuccess;
     const modal = document.getElementById('camera-scan-modal');
     if (modal) modal.classList.remove('hidden');
 
+    const viewport = document.getElementById('camera-reader-viewport');
+    if (viewport) viewport.innerHTML = '';
+
+    // html5-qrcode ライブラリが存在しない場合の即時手動フォールバック
+    if (typeof Html5Qrcode === 'undefined') {
+      this.promptManualEntry('QRスキャナーライブラリが読み込めませんでした。\nスタッフ端末のIDを手入力してください:');
+      return;
+    }
+
     try {
-      // 既存インスタンスの安全な破棄
       if (this.html5QrCode) {
         try {
-          if (this.html5QrCode.isScanning) {
-            await this.html5QrCode.stop();
-          }
+          if (this.html5QrCode.isScanning) await this.html5QrCode.stop();
           await this.html5QrCode.clear();
         } catch (e) {}
         this.html5QrCode = null;
@@ -32,20 +34,17 @@ const CameraScanner = {
 
       this.html5QrCode = new Html5Qrcode('camera-reader-viewport');
 
-      // 端末の画面サイズに応じて動的にスキャン矩形を最適化
       const config = {
         fps: 15,
         qrbox: (viewfinderWidth, viewfinderHeight) => {
           const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-          const edge = Math.max(180, Math.floor(minEdge * 0.72));
+          const edge = Math.max(160, Math.floor(minEdge * 0.75));
           return { width: edge, height: edge };
         },
         aspectRatio: 1.0
       };
 
-      const cameraConfig = {
-        facingMode: this.currentFacingMode
-      };
+      const cameraConfig = { facingMode: this.currentFacingMode };
 
       this.isScanning = true;
       await this.html5QrCode.start(
@@ -54,61 +53,44 @@ const CameraScanner = {
         (decodedText) => {
           this.handleDecodedText(decodedText);
         },
-        () => {
-          // 未検出フレームは正常スキップ
-        }
+        () => {}
       );
     } catch (error) {
-      console.error('[CameraScanner] カメラ起動エラー:', error);
-      alert('カメラの起動に失敗しました。カメラ権限を許可してください。');
-      this.close();
+      console.warn('[CameraScanner] カメラ自動起動失敗:', error);
+      this.promptManualEntry('カメラの起動に失敗しました（権限またはデバイス制限）。\nスタッフ端末のID（例: DEV-01）を入力してください:');
     }
   },
 
-  /**
-   * 読み取り成功時のハンドリング (デッドロック回避 & 超堅牢パーサー)
-   */
   handleDecodedText(decodedText) {
     if (!this.isScanning) return;
-    this.isScanning = false; // 二重発火を即座に遮断
+    this.isScanning = false;
 
-    // 1. 成功ビープ音
     this.playSuccessBeep();
-
-    // 2. 超堅牢データパーサー (JSON / Base64 / 日本語エスケープ / プレーンテキスト対応)
     const parsedData = this.parseDecodedPayload(decodedText);
 
-    // 3. 【最重要】カメラ停止とモーダル終了を非同期で安全に逃がす (デッドロック防止)
     const cb = this.activeCallback;
     this.activeCallback = null;
-
     this.closeModalOnly();
 
-    // カメラ停止は裏で実行（ユーザーの処理をブロックしない）
     setTimeout(() => {
       this.stop();
     }, 50);
 
-    // 4. コールバックを実行
     if (typeof cb === 'function') {
       try {
         cb(parsedData);
       } catch (err) {
-        console.error('[CameraScanner] コールバック実行時エラー:', err);
-        alert('読み取り後の処理中にエラーが発生しました: ' + err.message);
+        console.error('[CameraScanner] コールバックエラー:', err);
       }
     }
   },
 
-  /**
-   * あらゆる形式のQRコード文字列からグループ情報を復元
-   */
   parseDecodedPayload(raw) {
     if (!raw) return { device_id: 'DEV-01', group_name: '新規グループ', difficulty: 'normal' };
 
     let text = String(raw).trim();
 
-    // パターンA: Base64 パック形式 (PROJAI:〜)
+    // Base64 パック
     if (text.startsWith('PROJAI:')) {
       try {
         const b64 = text.replace('PROJAI:', '');
@@ -124,7 +106,7 @@ const CameraScanner = {
       } catch (e) {}
     }
 
-    // パターンB: 標準 JSON 形式 (URLデコード処理を挟んでパース)
+    // JSON
     try {
       const obj = JSON.parse(text);
       if (obj && typeof obj === 'object') {
@@ -138,7 +120,7 @@ const CameraScanner = {
       }
     } catch (e) {}
 
-    // パターンC: URLエンコードされた JSON の場合
+    // URLデコード後JSON
     try {
       const decoded = decodeURIComponent(text);
       const obj = JSON.parse(decoded);
@@ -153,7 +135,7 @@ const CameraScanner = {
       }
     } catch (e) {}
 
-    // パターンD: 単一の DEV-XX 文字列だった場合の救済
+    // DEV-XX マッチ
     const devMatch = text.match(/(DEV-\d+)/i);
     if (devMatch) {
       return {
@@ -165,15 +147,33 @@ const CameraScanner = {
       };
     }
 
-    // パターンE: その他プレーンテキスト
     return {
       device_id: 'DEV-01',
       group_name: text.substring(0, 16),
       staff_name: 'スタッフ',
       difficulty: 'normal',
-      is_ex_entry: false,
-      raw: text
+      is_ex_entry: false
     };
+  },
+
+  promptManualEntry(message) {
+    const input = prompt(message || 'スタッフ端末IDを入力してください (例: DEV-01):', 'DEV-01');
+    if (input) {
+      const devId = input.trim().toUpperCase();
+      const cb = this.activeCallback;
+      this.close();
+      if (typeof cb === 'function') {
+        cb({
+          device_id: devId.startsWith('DEV-') ? devId : `DEV-${devId}`,
+          group_name: '手動入力グループ',
+          staff_name: 'スタッフ',
+          difficulty: 'normal',
+          is_ex_entry: false
+        });
+      }
+    } else {
+      this.close();
+    }
   },
 
   async toggleCameraFacing() {
@@ -187,14 +187,10 @@ const CameraScanner = {
     this.isScanning = false;
     if (this.html5QrCode) {
       try {
-        if (this.html5QrCode.isScanning) {
-          await this.html5QrCode.stop();
-        }
+        if (this.html5QrCode.isScanning) await this.html5QrCode.stop();
         await this.html5QrCode.clear();
-      } catch (e) {
-      } finally {
-        this.html5QrCode = null;
-      }
+      } catch (e) {}
+      this.html5QrCode = null;
     }
   },
 
@@ -207,34 +203,23 @@ const CameraScanner = {
   closeModalOnly() {
     const modal = document.getElementById('camera-scan-modal');
     if (modal) modal.classList.add('hidden');
+    this.activeCallback = null;
   },
 
   playSuccessBeep() {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const now = ctx.currentTime;
-
-      const osc1 = ctx.createOscillator();
-      const gain1 = ctx.createGain();
-      osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(1760, now);
-      gain1.gain.setValueAtTime(0.2, now);
-      gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
-      osc1.connect(gain1);
-      gain1.connect(ctx.destination);
-      osc1.start(now);
-      osc1.stop(now + 0.08);
-
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.type = 'sine';
-      osc2.frequency.setValueAtTime(2349.32, now + 0.09);
-      gain2.gain.setValueAtTime(0.25, now + 0.09);
-      gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.22);
-      osc2.connect(gain2);
-      gain2.connect(ctx.destination);
-      osc2.start(now + 0.09);
-      osc2.stop(now + 0.22);
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1760, now);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.12);
     } catch (e) {}
   }
 };
