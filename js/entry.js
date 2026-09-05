@@ -32,8 +32,16 @@ const EntryApp = {
    */
   async handleRegister(qrData) {
     if (!qrData || !qrData.device_id) {
-      alert('無効なスタッフQRコードです。');
+      alert('無効なスタッフQRコードです。（端末IDが検出できませんでした）');
       return;
+    }
+
+    // 読み取り完了を即座にボタンUIへ反映（進行中フィードバック）
+    const btn = document.querySelector('.btn-giant-entry');
+    const origText = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.innerHTML = '<span class="material-symbols-outlined icon-lg" style="animation:spin 1s infinite linear;">sync</span> 受付登録処理中...';
+      btn.disabled = true;
     }
 
     try {
@@ -49,11 +57,18 @@ const EntryApp = {
       if (res && res.success) {
         this.renderRecentRegistered(res);
         this.fetchBoothStatuses();
+        alert(`【受付完了】\nグループ: ${res.groupId} (${res.groupName})\n担当: ${res.staffName}\n難易度: ${String(res.difficulty).toUpperCase()}`);
       } else {
-        alert('受付登録に失敗しました: ' + (res.error || 'エラー'));
+        alert('受付登録に失敗しました: ' + (res.error || 'サーバーエラー'));
       }
     } catch (e) {
-      alert('受付登録通信エラーが発生しました。');
+      console.error('[EntryApp] 受付通信エラー:', e);
+      alert('受付通信エラーが発生しました。\nネットワーク接続を確認してください。');
+    } finally {
+      if (btn) {
+        btn.innerHTML = origText;
+        btn.disabled = false;
+      }
     }
   },
 
